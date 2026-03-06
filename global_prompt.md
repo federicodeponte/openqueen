@@ -46,6 +46,10 @@ Before calling notify(), verify EVERY item in "Done When" using run_bash:
 If ANY check fails: run another worker iteration to fix it.
 Never call notify() on unverified work.
 
+Once ALL "Done When" items pass: call notify() immediately in that same iteration.
+Do NOT run additional checks beyond what is listed in "Done When".
+Do NOT verify content details that aren't in "Done When" — trust the worker did it right.
+
 ---
 
 ## 4. Escalation Rules — Stop Immediately, Never Retry
