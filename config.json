@@ -7,5 +7,5 @@
   "history_summarize_at_iteration": 5,
   "whatsapp_group": "120363423286386596@g.us",
   "whatsapp_bridge": "~/queen/whatsapp_bridge.py",
-  "log_dir": "~/gemini-agent/logs"
+  "log_dir": "~/openqueen/logs"
 }

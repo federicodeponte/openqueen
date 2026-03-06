@@ -1,4 +1,4 @@
-# gemini-agent
+# openqueen
 
 Gemini 3.1 Pro orchestrates Claude/Codex workers autonomously on AX41.
 You write a task file. Gemini drives the worker until done, then notifies you on WhatsApp.
@@ -8,17 +8,17 @@ You write a task file. Gemini drives the worker until done, then notifies you on
 ```bash
 pip3 install google-genai python-dotenv pytest --break-system-packages
 echo 'export GOOGLE_API_KEY=...' >> ~/.zshrc && source ~/.zshrc
-ln -sf ~/gemini-agent/agent.py /usr/local/bin/gemini-agent
-chmod +x ~/gemini-agent/agent.py
+ln -sf ~/openqueen/agent.py /usr/local/bin/openqueen
+chmod +x ~/openqueen/agent.py
 ```
 
 ## Usage
 
 ```bash
-gemini-agent ~/gemini-agent/tasks/my-task.md
+openqueen ~/openqueen/tasks/my-task.md
 
 # Tail the log while it runs
-tail -f ~/gemini-agent/logs/my-task-*.log
+tail -f ~/openqueen/logs/my-task-*.log
 ```
 
 ## task.md format
@@ -55,7 +55,7 @@ Anything Gemini and the worker need to know.
 | `history_summarize_at_iteration` | 5 | Compress history at this iteration |
 | `whatsapp_group` | test group | WhatsApp group ID for notifications |
 | `whatsapp_bridge` | `~/queen/whatsapp_bridge.py` | Bridge script path |
-| `log_dir` | `~/gemini-agent/logs` | Log directory |
+| `log_dir` | `~/openqueen/logs` | Log directory |
 
 ## Escalation
 
@@ -66,20 +66,20 @@ Gemini escalates (WhatsApp message + exit 1) on:
 - Max iterations reached
 
 If the WhatsApp bridge (clawdbot) is down, escalation is written to:
-- `~/gemini-agent/logs/NOTIFY_FAILED-<task>-<date>.txt`
-- `~/gemini-agent/ESCALATION_PENDING.txt`
+- `~/openqueen/logs/NOTIFY_FAILED-<task>-<date>.txt`
+- `~/openqueen/ESCALATION_PENDING.txt`
 
 ## Tests
 
 ```bash
-cd ~/gemini-agent
+cd ~/openqueen
 python3 -m pytest tests/ -v
 ```
 
 ## Architecture
 
 ```
-gemini-agent task.md
+openqueen task.md
       ↓
 Gemini 3.1 Pro (orchestrator)
       ↓ tool calls

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Gemini Agent — Gemini 3.1 Pro orchestrates Claude/Codex workers autonomously.
-Usage: gemini-agent <task.md>
+Usage: openqueen <task.md>
 """
 
 import json
@@ -20,7 +20,7 @@ from google.genai import types
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-AGENT_DIR = Path("~/gemini-agent").expanduser()
+AGENT_DIR = Path("~/openqueen").expanduser()
 CONFIG_PATH = AGENT_DIR / "config.json"
 GLOBAL_PROMPT_PATH = AGENT_DIR / "global_prompt.md"
 CONTEXT_DIR = AGENT_DIR / "context"
@@ -161,7 +161,7 @@ def setup_logger(task: dict, config: dict) -> logging.Logger:
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     log_file = log_dir / f"{task['name']}-{ts}.log"
 
-    logger = logging.getLogger("gemini-agent")
+    logger = logging.getLogger("openqueen")
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter("[%(asctime)s] %(levelname)-7s %(message)s",
                             datefmt="%Y-%m-%dT%H:%M:%S")
@@ -205,7 +205,7 @@ def check_whatsapp_bridge(config: dict, logger: logging.Logger) -> bool:
     except Exception as e:
         logger.warning(f"WhatsApp bridge check failed: {e}")
 
-    Path("~/gemini-agent/BRIDGE_DOWN").expanduser().write_text(
+    Path("~/openqueen/BRIDGE_DOWN").expanduser().write_text(
         f"Bridge down at {datetime.now().isoformat()}\n"
     )
     return False
@@ -414,9 +414,9 @@ def load_context(task: dict, logger: logging.Logger) -> str:
     """Load context files declared in task['context_keys'] and return as a block.
 
     Key syntax (namespace:subkey):
-      global:machines   → ~/gemini-agent/context/global/machines.md
-      global:logins     → ~/gemini-agent/context/global/logins.md
-      skills:backend    → ~/gemini-agent/context/skills/backend.md
+      global:machines   → ~/openqueen/context/global/machines.md
+      global:logins     → ~/openqueen/context/global/logins.md
+      skills:backend    → ~/openqueen/context/skills/backend.md
       project           → <path>/.gemini/project.md + <path>/.gemini/status.md
       project:stack     → <path>/.gemini/stack.md
 
@@ -510,7 +510,7 @@ def main(task_file: str):
             ts = datetime.now().strftime("%Y%m%d-%H%M%S")
             fallback = Path(config["log_dir"]) / f"NOTIFY_FAILED-{task['name']}-{ts}.txt"
             fallback.write_text(msg)
-            Path("~/gemini-agent/ESCALATION_PENDING.txt").expanduser().write_text(msg)
+            Path("~/openqueen/ESCALATION_PENDING.txt").expanduser().write_text(msg)
             logger.error(f"Bridge down — escalation written to {fallback}")
         sys.exit(1)
 
@@ -740,6 +740,6 @@ def main(task_file: str):
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: gemini-agent <task.md>")
+        print("Usage: openqueen <task.md>")
         sys.exit(1)
     main(sys.argv[1])
