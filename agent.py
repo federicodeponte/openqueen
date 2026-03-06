@@ -20,8 +20,10 @@ from google.genai import types
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-CONFIG_PATH = Path("~/gemini-agent/config.json").expanduser()
-GLOBAL_PROMPT_PATH = Path("~/gemini-agent/global_prompt.md").expanduser()
+AGENT_DIR = Path("~/gemini-agent").expanduser()
+CONFIG_PATH = AGENT_DIR / "config.json"
+GLOBAL_PROMPT_PATH = AGENT_DIR / "global_prompt.md"
+CONTEXT_DIR = AGENT_DIR / "context"
 
 # Exact strings from Claude's rate limit output — specific to avoid false positives
 RATE_LIMIT_STRINGS = [
@@ -74,6 +76,7 @@ def parse_task_md(task_file: str) -> dict:
         "worker": "claude",
         "new_project": False,
         "env_file": None,
+        "context_keys": [],  # list of "namespace:key" or "project" strings
         "objective": "",
         "context": "",
         "done_when": [],
@@ -87,24 +90,37 @@ def parse_task_md(task_file: str) -> dict:
             break
 
     in_project = False
+    in_context_list = False
     for line in lines:
         if line.strip() == "## Project":
             in_project = True
             continue
         if line.startswith("## ") and in_project:
             in_project = False
-        if in_project and ":" in line:
-            key, _, val = line.partition(":")
-            key = key.strip().lstrip("-").strip()
-            val = val.split("#")[0].strip()
-            if key == "path":
-                task["path"] = str(Path(val).expanduser())
-            elif key == "worker":
-                task["worker"] = val if val in ("claude", "codex") else "claude"
-            elif key == "new_project":
-                task["new_project"] = val.lower() in ("true", "yes", "1")
-            elif key == "env_file":
-                task["env_file"] = str(Path(val).expanduser()) if val else None
+            in_context_list = False
+            continue
+        if in_project:
+            stripped = line.strip()
+            if in_context_list:
+                if stripped.startswith("-"):
+                    task["context_keys"].append(stripped.lstrip("-").strip())
+                    continue
+                else:
+                    in_context_list = False
+            if ":" in stripped and not stripped.startswith("-"):
+                key, _, val = stripped.partition(":")
+                key = key.strip()
+                val = val.split("#")[0].strip()
+                if key == "path":
+                    task["path"] = str(Path(val).expanduser())
+                elif key == "worker":
+                    task["worker"] = val if val in ("claude", "codex") else "claude"
+                elif key == "new_project":
+                    task["new_project"] = val.lower() in ("true", "yes", "1")
+                elif key == "env_file":
+                    task["env_file"] = str(Path(val).expanduser()) if val else None
+                elif key == "context" and not val:
+                    in_context_list = True
 
     if not task["path"]:
         raise ValueError("task.md must have 'path:' under ## Project")
@@ -392,6 +408,64 @@ def summarize_history(
         return history
 
 
+# ── Context loading ───────────────────────────────────────────────────────────
+
+def load_context(task: dict, logger: logging.Logger) -> str:
+    """Load context files declared in task['context_keys'] and return as a block.
+
+    Key syntax (namespace:subkey):
+      global:machines   → ~/gemini-agent/context/global/machines.md
+      global:logins     → ~/gemini-agent/context/global/logins.md
+      skills:backend    → ~/gemini-agent/context/skills/backend.md
+      project           → <path>/.gemini/project.md + <path>/.gemini/status.md
+      project:stack     → <path>/.gemini/stack.md
+
+    Later keys override earlier ones on any conflict (last loaded wins).
+    Missing files are warned and skipped — never fatal.
+    """
+    keys = task.get("context_keys", [])
+    if not keys:
+        return ""
+
+    project_dir = Path(task["path"]) / ".gemini"
+    snippets = []
+
+    for key in keys:
+        if key == "project":
+            parts = []
+            for fname in ("project.md", "status.md"):
+                p = project_dir / fname
+                if p.exists():
+                    parts.append(f"#### {fname}\n{p.read_text().strip()}")
+                    logger.info(f"Context loaded: {p}")
+                else:
+                    logger.debug(f"Context skip (not found): {p}")
+            if parts:
+                snippets.append(f"### project\n" + "\n\n".join(parts))
+        elif ":" in key:
+            namespace, _, subkey = key.partition(":")
+            if namespace == "project":
+                path = project_dir / f"{subkey}.md"
+            else:
+                path = CONTEXT_DIR / namespace / f"{subkey}.md"
+            if path.exists():
+                snippets.append(f"### {key}\n{path.read_text().strip()}")
+                logger.info(f"Context loaded: {path}")
+            else:
+                logger.warning(f"Context file not found: {path} — skipping")
+        else:
+            logger.warning(f"Unknown context key format: '{key}' — skipping (use 'namespace:key')")
+
+    if not snippets:
+        return ""
+
+    return (
+        "## Loaded Context\n\n"
+        "Note: later sections override earlier ones on any conflict.\n\n"
+        + "\n\n---\n\n".join(snippets)
+    )
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main(task_file: str):
@@ -407,7 +481,7 @@ def main(task_file: str):
     logger.info(f"Worker: {task['worker']}")
 
     env_vars = load_env_file(task["env_file"], logger)
-    bridge_ok = check_whatsapp_bridge(config, logger)  # noqa: F841 (used in closures below)
+    bridge_ok = check_whatsapp_bridge(config, logger)
 
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
@@ -416,6 +490,10 @@ def main(task_file: str):
 
     client = genai.Client(api_key=api_key)
     global_prompt = GLOBAL_PROMPT_PATH.read_text()
+    context_block = load_context(task, logger)
+    if context_block:
+        logger.info(f"Context block loaded ({len(context_block)} chars)")
+        global_prompt = global_prompt + "\n\n---\n\n" + context_block
 
     # ── Terminal action helpers ────────────────────────────────────────────
 
@@ -427,8 +505,8 @@ def main(task_file: str):
             f"Log: {config['log_dir']}/{task['name']}-*.log"
         )
         logger.error(f"ESCALATING: {reason}")
-        ok = _send_whatsapp(msg, config, logger)
-        if not ok:
+        sent = bridge_ok and _send_whatsapp(msg, config, logger)
+        if not sent:
             ts = datetime.now().strftime("%Y%m%d-%H%M%S")
             fallback = Path(config["log_dir"]) / f"NOTIFY_FAILED-{task['name']}-{ts}.txt"
             fallback.write_text(msg)
@@ -439,8 +517,8 @@ def main(task_file: str):
     def do_notify(message: str) -> None:
         msg = f"✅ DONE: {task['name']}\n{message}"
         logger.info(f"DONE: {message}")
-        ok = _send_whatsapp(msg, config, logger)
-        if not ok:
+        sent = bridge_ok and _send_whatsapp(msg, config, logger)
+        if not sent:
             ts = datetime.now().strftime("%Y%m%d-%H%M%S")
             fallback = Path(config["log_dir"]) / f"NOTIFY_FAILED-{task['name']}-{ts}.txt"
             fallback.write_text(msg)
@@ -591,6 +669,7 @@ def main(task_file: str):
                     system_instruction=system_prompt,
                     tools=[tools],
                     temperature=0.2,
+                    http_options=types.HttpOptions(timeout=300_000),  # 5 min per Gemini call
                 ),
             )
         except Exception as e:

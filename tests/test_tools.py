@@ -56,6 +56,7 @@ def task(tmp_path):
         "worker": "claude",
         "new_project": False,
         "env_file": None,
+        "context_keys": [],
         "objective": "Do something",
         "context": "",
         "done_when": ["file exists"],
@@ -159,6 +160,89 @@ def test_parse_task_md_inline_comments_stripped(tmp_path):
     task_file.write_text("# Task: T\n\n## Project\npath: /tmp/proj  # this is my project\n\n## Done When\n- done\n")
     task = agent.parse_task_md(str(task_file))
     assert task["path"] == "/tmp/proj"  # comment stripped
+
+
+# ── context_keys parsing ──────────────────────────────────────────────────────
+
+def test_parse_task_md_context_keys(tmp_path):
+    task_file = tmp_path / "task.md"
+    task_file.write_text("""# Task: T
+
+## Project
+path: /tmp/proj
+context:
+  - global:machines
+  - skills:backend
+  - project
+
+## Done When
+- done
+""")
+    task = agent.parse_task_md(str(task_file))
+    assert task["context_keys"] == ["global:machines", "skills:backend", "project"]
+
+
+def test_parse_task_md_no_context_keys(tmp_path):
+    task_file = tmp_path / "task.md"
+    task_file.write_text("# Task: T\n\n## Project\npath: /tmp/proj\n\n## Done When\n- done\n")
+    task = agent.parse_task_md(str(task_file))
+    assert task["context_keys"] == []
+
+
+def test_load_context_global_key(tmp_path, logger, monkeypatch):
+    context_dir = tmp_path / "context" / "global"
+    context_dir.mkdir(parents=True)
+    (context_dir / "machines.md").write_text("AX41: big server")
+    monkeypatch.setattr(agent, "CONTEXT_DIR", tmp_path / "context")
+
+    task = {"path": str(tmp_path / "project"), "context_keys": ["global:machines"]}
+    result = agent.load_context(task, logger)
+    assert "AX41: big server" in result
+    assert "global:machines" in result
+
+
+def test_load_context_project_key(tmp_path, logger):
+    project_dir = tmp_path / "project"
+    gemini_dir = project_dir / ".gemini"
+    gemini_dir.mkdir(parents=True)
+    (gemini_dir / "project.md").write_text("Brief: do stuff")
+    (gemini_dir / "status.md").write_text("Iteration: 1/10")
+
+    task = {"path": str(project_dir), "context_keys": ["project"]}
+    result = agent.load_context(task, logger)
+    assert "Brief: do stuff" in result
+    assert "Iteration: 1/10" in result
+
+
+def test_load_context_missing_file_skipped(tmp_path, logger, monkeypatch):
+    monkeypatch.setattr(agent, "CONTEXT_DIR", tmp_path / "context")
+    task = {"path": str(tmp_path / "project"), "context_keys": ["global:nonexistent"]}
+    result = agent.load_context(task, logger)
+    assert result == ""
+
+
+def test_load_context_empty_keys_returns_empty(tmp_path, logger):
+    task = {"path": str(tmp_path), "context_keys": []}
+    assert agent.load_context(task, logger) == ""
+
+
+def test_load_context_project_stack_override(tmp_path, logger, monkeypatch):
+    context_dir = tmp_path / "context" / "global"
+    context_dir.mkdir(parents=True)
+    (context_dir / "stack.md").write_text("Python 3.11")
+
+    project_dir = tmp_path / "project"
+    gemini_dir = project_dir / ".gemini"
+    gemini_dir.mkdir(parents=True)
+    (gemini_dir / "stack.md").write_text("Python 3.12")
+
+    monkeypatch.setattr(agent, "CONTEXT_DIR", tmp_path / "context")
+    task = {"path": str(project_dir), "context_keys": ["global:stack", "project:stack"]}
+    result = agent.load_context(task, logger)
+    # Both present; global first, project last (last-loaded wins in LLM context)
+    global_pos = result.index("Python 3.11")
+    project_pos = result.index("Python 3.12")
+    assert project_pos > global_pos
 
 
 # ── Output truncation ─────────────────────────────────────────────────────────
