@@ -73,67 +73,56 @@ Your job: convert a natural language coding request into a task.md file.
 {nl}
 
 ## Output Format
-Output ONLY valid YAML frontmatter + markdown task body. No explanation, no code fences.
+Output ONLY the task.md content below. No explanation, no code fences, nothing else.
 
----
-name: <slug-no-spaces-max-30-chars>
-path: <absolute path to the project>
+# Task: <slug-lowercase-hyphens-max-30-chars>
+
+## Project
+path: <absolute expanded path to the project, no ~ >
 worker: claude
-max_iterations: 10
-context_keys:
-  - <only include relevant ones>
----
+context:
+  - <only include relevant context keys from the list above>
 
-## Task
-<2-3 sentences describing exactly what to implement, referencing specific files if known>
+## Objective
+<3-5 sentences describing exactly what to implement or check. Reference specific files if known.>
 
 ## Done When
-- [ ] <concrete verifiable criterion 1>
-- [ ] <concrete verifiable criterion 2>
-- [ ] <concrete verifiable criterion 3 if needed>
+- <bash command that verifies criterion 1, e.g. grep -q 'pattern' path/to/file>
+- <bash command that verifies criterion 2, e.g. curl -s localhost:PORT/endpoint | grep -q 'expected'>
+- <bash command that verifies criterion 3 if needed>
 
 Rules:
-- name: lowercase, hyphens only, describes the change
-- path: must be an absolute path from the project list above
-- Done When: must be checkable with a bash command (curl, pytest, grep, test -f)
+- path: must be the absolute path (expand ~ to /root or /home/user)
+- Done When: must be real bash one-liners that return 0 on success
 - If the request is ambiguous about which project, pick the most likely one
-- Do NOT include context_keys that are not relevant (e.g. no frontend key for a pure backend task)
+- Do NOT include context keys not relevant to the task
+- For audit/readiness tasks: Done When should check key files exist, build passes, env vars set
 """
 
 
 def call_claude(prompt: str) -> str:
-    """Call claude -p with the prompt via stdin."""
-    result = subprocess.run(
-        ["claude", "-p", "--model", "claude-sonnet-4-6"],
-        input=prompt,
-        capture_output=True,
-        text=True,
-        timeout=90,
+    """Call Gemini to generate the task.md."""
+    import google.genai as genai
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("GOOGLE_API_KEY not set")
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model="gemini-3-flash-preview",
+        contents=prompt,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"Claude error: {result.stderr[:300]}")
-    return result.stdout.strip()
+    return response.text.strip()
 
 
 def parse_task_md(content: str) -> dict | None:
-    """Validate the generated task.md has required frontmatter."""
-    if not content.startswith("---"):
-        return None
-    end = content.find("---", 3)
-    if end == -1:
-        return None
-    try:
-        import yaml
-        frontmatter = yaml.safe_load(content[3:end])
-        return frontmatter if isinstance(frontmatter, dict) else None
-    except Exception:
-        # Minimal manual parse
-        fm = {}
-        for line in content[3:end].splitlines():
-            if ":" in line:
-                k, _, v = line.partition(":")
-                fm[k.strip()] = v.strip()
-        return fm if fm else None
+    """Validate the generated task.md has required sections."""
+    fm = {}
+    for line in content.splitlines():
+        if line.startswith("# Task:"):
+            fm["name"] = line.replace("# Task:", "").strip()
+        if line.strip().startswith("path:"):
+            fm["path"] = line.split("path:", 1)[1].strip()
+    return fm if fm.get("name") and fm.get("path") else None
 
 
 def main():
@@ -166,11 +155,7 @@ def main():
         print(f"Invalid task.md generated:\n{content[:500]}", file=sys.stderr)
         sys.exit(1)
 
-    # Ensure path is absolute
     task_path = Path(fm["path"]).expanduser()
-    if not task_path.is_absolute():
-        print(f"Path not absolute: {fm['path']}", file=sys.stderr)
-        sys.exit(1)
 
     # Write to temp file
     ts = int(time.time())
