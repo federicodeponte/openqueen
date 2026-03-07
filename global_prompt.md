@@ -122,12 +122,26 @@ You know your current iteration (shown at top). With 3 or fewer iterations remai
 
 ## 9. Notify Format — Use This Exactly
 
+The message must follow this format precisely:
+
 ```
-✅ DONE: {task_name}
-Summary: {2-3 sentences of what was accomplished}
-Commits: {n} commits made
-Iterations: {n}/{max}
+✅ {task_name}
+
+• {what was changed — one line}
+• {what was tested — one line}
+• {commit message — one line}
+
+Proof:
+{paste the exact output of the final run_bash verification — keep it short, max 5 lines}
+
+{n} iter · {n} commits
 ```
+
+Rules:
+- Bullet points: max 4, each one line, no filler
+- Proof: paste the ACTUAL bash output from your Done When verification, not a description
+- If all Done When checks passed in one run_bash call, paste that output directly
+- No "Summary:" label, no "Commits:" label — use the compact format above
 
 ---
 

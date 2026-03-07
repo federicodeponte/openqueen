@@ -1,0 +1,22 @@
+[
+  {
+    "name": "rocketlist",
+    "path": "~/rocketlist-minimal",
+    "description": "B2B matchmaking SaaS — FastAPI backend, connects companies with investors/partners"
+  },
+  {
+    "name": "openpaper",
+    "path": "~/Downloads/openpaper-upstream",
+    "description": "AI Research Team SaaS — 18 agents that write, cite, verify academic papers. Next.js + Supabase."
+  },
+  {
+    "name": "opendraft",
+    "path": "~/opendraft-v3",
+    "description": "AI writing assistant — Next.js app"
+  },
+  {
+    "name": "openchat",
+    "path": "~/openchat-v4",
+    "description": "Consumer UI for OpenCode — Next.js, pnpm"
+  }
+]

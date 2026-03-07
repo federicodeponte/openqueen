@@ -1,0 +1,6 @@
+[2026-03-06T19:22:51] INFO    Log file: /root/openqueen/logs/t5-rocketlist-gemini-ctx-20260306-192251.log
+[2026-03-06T19:22:51] INFO    Task: t5-rocketlist-gemini-ctx
+[2026-03-06T19:22:51] INFO    Project: /root/rocketlist-minimal
+[2026-03-06T19:22:51] INFO    Worker: claude
+[2026-03-06T19:22:51] INFO    WhatsApp bridge: UP
+[2026-03-06T19:22:51] ERROR   GOOGLE_API_KEY not set — add to ~/.zshrc

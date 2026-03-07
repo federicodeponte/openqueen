@@ -1,0 +1,33 @@
+[2026-03-06T21:06:51] INFO    openqueen-listen v2 started
+[2026-03-06T21:06:51] INFO    Queue file: /opt/clawdbot/data/openqueen-queue.json
+[2026-03-06T21:06:51] INFO    Poll interval: 15s
+[2026-03-06T21:07:06] INFO    Queue entry: task=~/openqueen/tasks/t7b-rocketlist-ping.md ts=2026-03-06T21:07:00Z
+[2026-03-06T21:07:06] INFO    Spawned openqueen PID=3920759 task=/root/openqueen/tasks/t7b-rocketlist-ping.md log=/root/openqueen/logs/listen-run-1772827626.log
+[2026-03-06T21:07:10] INFO    WA sent: openqueen: started t7b-rocketlist-ping.md (PID=3920759). Will notify when done.
+[2026-03-07T16:14:10] INFO    Queue entry: task=~/openqueen/tasks/t7b-rocketlist-ping.md ts=2026-03-07T15:14:00Z
+[2026-03-07T16:14:10] INFO    Spawned openqueen PID=1500486 task=/root/openqueen/tasks/t7b-rocketlist-ping.md log=/root/openqueen/logs/listen-run-1772896450.log
+[2026-03-07T16:14:14] INFO    WA sent: openqueen: started t7b-rocketlist-ping.md (PID=1500486). Will notify when done.
+[2026-03-07T16:16:20] INFO    openqueen-listen v3 started
+[2026-03-07T16:16:20] INFO    Queue file: /opt/clawdbot/data/openqueen-queue.json
+[2026-03-07T16:16:20] INFO    Sessions dir: /opt/clawdbot/data/agents/main/sessions
+[2026-03-07T16:16:20] INFO    Poll interval: 15s
+[2026-03-07T16:16:20] INFO    Initialized last_seen_ts=2026-03-07T15:16:20.918409+00:00
+[2026-03-07T16:16:35] INFO    Found !task in session test-oq-: path=~/openqueen/tasks/t7b-rocketlist-ping.md
+[2026-03-07T16:16:35] INFO    Running task from session test-oq-: ~/openqueen/tasks/t7b-rocketlist-ping.md
+[2026-03-07T16:16:35] INFO    Spawned openqueen PID=1506219 task=/root/openqueen/tasks/t7b-rocketlist-ping.md log=/root/openqueen/logs/listen-run-1772896595.log
+[2026-03-07T16:16:39] INFO    WA sent: openqueen: started t7b-rocketlist-ping.md (PID=1506219). Will notify when done.
+[2026-03-07T16:37:42] INFO    Found !task in session d8c2a891: path=~/openqueen/tasks/t7b-rocketlist-ping.md
+[2026-03-07T16:37:42] INFO    Running task from session d8c2a891: ~/openqueen/tasks/t7b-rocketlist-ping.md
+[2026-03-07T16:37:42] INFO    Spawned openqueen PID=1550384 task=/root/openqueen/tasks/t7b-rocketlist-ping.md log=/root/openqueen/logs/listen-run-1772897862.log
+[2026-03-07T16:37:46] INFO    WA sent: openqueen: started t7b-rocketlist-ping.md (PID=1550384). Will notify when done.
+[2026-03-07T16:38:31] INFO    Queue file: task_path=~/openqueen/tasks/t7b-rocketlist-ping.md
+[2026-03-07T16:38:31] INFO    Spawned openqueen PID=1552693 task=/root/openqueen/tasks/t7b-rocketlist-ping.md log=/root/openqueen/logs/listen-run-1772897911.log
+[2026-03-07T16:38:34] INFO    WA sent: openqueen: started t7b-rocketlist-ping.md (PID=1552693). Will notify when done.
+[2026-03-07T16:45:15] INFO    openqueen-listen v3 started
+[2026-03-07T16:45:15] INFO    Queue file: /opt/clawdbot/data/openqueen-queue.json
+[2026-03-07T16:45:15] INFO    Sessions dir: /opt/clawdbot/data/agents/main/sessions
+[2026-03-07T16:45:15] INFO    Poll interval: 15s
+[2026-03-07T16:45:30] INFO    openqueen-listen v4 started
+[2026-03-07T16:45:30] INFO    Queue file: /opt/clawdbot/data/openqueen-queue.json
+[2026-03-07T16:45:30] INFO    Sessions dir: /opt/clawdbot/data/agents/main/sessions
+[2026-03-07T16:45:30] INFO    Poll interval: 15s

@@ -212,15 +212,18 @@ def check_whatsapp_bridge(config: dict, logger: logging.Logger) -> bool:
 
 
 def _send_whatsapp(message: str, config: dict, logger: logging.Logger) -> bool:
+    import json as _json, urllib.request as _req
     try:
-        result = subprocess.run(
-            ["python3", config["whatsapp_bridge"], "send", message],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode == 0:
+        data = _json.dumps({"text": message}).encode()
+        r = _req.urlopen(_req.Request(
+            "http://127.0.0.1:19234/send",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        ), timeout=10)
+        if r.status == 200:
             logger.info("WhatsApp: sent")
             return True
-        logger.error(f"WhatsApp send failed: {result.stderr[:200]}")
+        logger.error(f"WhatsApp send failed: HTTP {r.status}")
     except Exception as e:
         logger.error(f"WhatsApp send exception: {e}")
     return False
