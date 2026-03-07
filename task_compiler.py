@@ -16,7 +16,7 @@ PROJECTS_FILE = Path("/root/openqueen/projects.json")
 TASKS_DIR = Path("/tmp/oq-tasks")
 TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
-CONTEXT_KEYS = ["global:stack", "global:backend", "global:frontend", "global:user_flows"]
+CONTEXT_KEYS = ["global:stack", "global:machines", "skills:backend", "skills:frontend", "skills:user_flows"]
 
 
 def load_projects() -> list[dict]:

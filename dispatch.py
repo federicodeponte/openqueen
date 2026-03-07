@@ -68,7 +68,9 @@ def main():
         send_wa("Could not build task. Try rephrasing — be more specific about the project and what you want.")
         return
 
-    task_name = Path(task_path).stem
+    # Strip trailing timestamp (e.g. "openpaper-launch-readiness-1772906409" → "openpaper-launch-readiness")
+    import re as _re
+    task_name = _re.sub(r'-\d{10}$', '', Path(task_path).stem)
     ts = int(time.time())
     log_file = str(LOGS_DIR / f"run-{ts}.log")
 
