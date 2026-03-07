@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-openqueen-listen — watches the OpenClaw queue file for task requests.
+openqueen-listen v3 — watches OpenClaw session files for !task triggers.
 
-Flow:
-  1. Federico sends "@openclaw !task ~/openqueen/tasks/foo.md" in WhatsApp group
-  2. Clawdbot (groupPolicy:open, requireMention:true) picks it up, runs agent turn
-  3. Agent reads openqueen skill, writes task path to queue file
-  4. This daemon detects the queue file, runs openqueen, clears the queue
+Two detection methods:
+  1. Queue file: /opt/clawdbot/data/openqueen-queue.json (written by clawdbot agent)
+  2. Session files: detect new agent-replies containing "Queued: <path>"
+     or new user messages starting with "!task " (when groupPolicy=open processes them)
 
-Queue file: /opt/clawdbot/data/openqueen-queue.json (shared container/host volume)
+This daemon runs on the HOST and spawns openqueen when a task is detected.
 """
 
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -21,9 +21,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 QUEUE_FILE = Path("/opt/clawdbot/data/openqueen-queue.json")
-BRIDGE = Path("~/queen/whatsapp_bridge.py").expanduser()
-RUNS_DIR = Path("~/openqueen/logs").expanduser()
+SESSIONS_DIR = Path("/opt/clawdbot/data/agents/main/sessions")
+STATE_FILE = Path("/root/.openqueen-listen-state.json")
+BRIDGE = Path("/root/queen/whatsapp_bridge.py")
 POLL_INTERVAL = 15  # seconds
+
+RUNS_DIR = Path("/root/openqueen/logs")
+RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,10 +35,20 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("/root/openqueen/logs/listen.log"),
+        logging.FileHandler(str(RUNS_DIR / "listen.log")),
     ],
 )
 logger = logging.getLogger("oq-listen")
+
+
+def load_state() -> dict:
+    if STATE_FILE.exists():
+        return json.loads(STATE_FILE.read_text())
+    return {"last_seen_ts": "", "processed_sessions": []}
+
+
+def save_state(state: dict):
+    STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
 def send_whatsapp(msg: str):
@@ -51,28 +65,32 @@ def send_whatsapp(msg: str):
         logger.error(f"WA send error: {e}")
 
 
-def run_openqueen(task_path: str) -> int:
-    """Spawn openqueen on AX41 host. Returns PID."""
-    # Get API key from /etc/environment
+def get_api_key() -> str:
     try:
-        env_content = Path("/etc/environment").read_text()
-        api_key = ""
-        for line in env_content.splitlines():
+        for line in Path("/etc/environment").read_text().splitlines():
             if line.startswith("GOOGLE_API_KEY="):
-                api_key = line.split("=", 1)[1].strip()
-                break
+                return line.split("=", 1)[1].strip()
     except Exception:
-        api_key = os.environ.get("GOOGLE_API_KEY", "")
+        pass
+    return os.environ.get("GOOGLE_API_KEY", "")
 
+
+def run_openqueen(task_path: str) -> int:
+    api_key = get_api_key()
     if not api_key:
-        logger.error("GOOGLE_API_KEY not found in /etc/environment")
+        logger.error("GOOGLE_API_KEY not found")
         return -1
 
     expanded = str(Path(task_path.strip()).expanduser())
-    ts = int(time.time())
-    log_file = f"/root/openqueen/logs/listen-run-{ts}.log"
+    if not Path(expanded).exists():
+        logger.error(f"Task file not found: {expanded}")
+        send_whatsapp(f"openqueen: task file not found: {task_path}")
+        return -1
 
+    ts = int(time.time())
+    log_file = str(RUNS_DIR / f"listen-run-{ts}.log")
     env = {**os.environ, "GOOGLE_API_KEY": api_key}
+
     proc = subprocess.Popen(
         ["openqueen", expanded],
         stdout=open(log_file, "w"),
@@ -84,52 +102,153 @@ def run_openqueen(task_path: str) -> int:
     return proc.pid
 
 
-def poll():
+# ── Pattern matching ──────────────────────────────────────────────────────────
+
+TASK_PREFIX = "!task"
+
+def extract_task_path(text: str) -> str | None:
+    """Extract path from '!task <path>' in text."""
+    text = text.strip()
+    if TASK_PREFIX in text:
+        idx = text.find(TASK_PREFIX)
+        remainder = text[idx + len(TASK_PREFIX):].strip()
+        # Take first non-empty token (the path)
+        path = remainder.split()[0] if remainder.split() else ""
+        if path:
+            return path
+    return None
+
+
+# ── Poll queue file ───────────────────────────────────────────────────────────
+
+def poll_queue():
     if not QUEUE_FILE.exists():
         return
-
     try:
         content = QUEUE_FILE.read_text().strip()
         if not content:
             return
         entry = json.loads(content)
     except Exception as e:
-        logger.error(f"Failed to read queue: {e}")
+        logger.error(f"Queue parse error: {e}")
+        QUEUE_FILE.unlink(missing_ok=True)
         return
 
     task_path = entry.get("task_path", "").strip()
-    queued_ts = entry.get("ts", "")
-    logger.info(f"Queue entry: task={task_path} ts={queued_ts}")
-
-    if not task_path:
-        QUEUE_FILE.unlink(missing_ok=True)
-        return
-
-    expanded = str(Path(task_path).expanduser())
-    if not Path(expanded).exists():
-        logger.error(f"Task file not found: {expanded}")
-        send_whatsapp(f"openqueen error: task file not found: {task_path}")
-        QUEUE_FILE.unlink(missing_ok=True)
-        return
-
-    # Clear queue before running (idempotent)
+    logger.info(f"Queue file: task_path={task_path}")
     QUEUE_FILE.unlink(missing_ok=True)
 
-    pid = run_openqueen(task_path)
-    if pid > 0:
-        send_whatsapp(f"openqueen: started {Path(task_path).name} (PID={pid}). Will notify when done.")
-    else:
-        send_whatsapp(f"openqueen: failed to start {task_path} (no API key?)")
+    if task_path:
+        pid = run_openqueen(task_path)
+        if pid > 0:
+            send_whatsapp(f"openqueen: started {Path(task_path).name} (PID={pid}). Will notify when done.")
 
+
+# ── Poll session files ────────────────────────────────────────────────────────
+
+def poll_sessions(state: dict):
+    """Watch session files for new user messages with !task commands.
+
+    When groupPolicy=open and a group message comes in, clawdbot creates
+    an agent session. The incoming WhatsApp message appears as a 'user' role
+    in that session. We detect these and trigger openqueen directly.
+    """
+    if not SESSIONS_DIR.exists():
+        return
+
+    last_ts = state.get("last_seen_ts", "")
+    processed = set(state.get("processed_sessions", []))
+
+    session_files = sorted(
+        SESSIONS_DIR.glob("*.jsonl"),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+
+    new_last_ts = last_ts
+    found_tasks = []
+
+    for sf in session_files[:20]:
+        if sf.stem in processed and sf.stat().st_mtime < time.time() - 300:
+            continue  # Skip old processed sessions
+        try:
+            with open(sf) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if entry.get("type") != "message":
+                            continue
+                        ts = entry.get("timestamp", "")
+                        if ts <= last_ts:
+                            continue
+                        msg = entry.get("message", {})
+                        role = msg.get("role", "")
+                        content = msg.get("content", [])
+
+                        # Extract text
+                        text = ""
+                        if isinstance(content, list):
+                            for c in content:
+                                if isinstance(c, dict) and c.get("type") == "text":
+                                    text = c.get("text", "")
+                                    break
+                        elif isinstance(content, str):
+                            text = content
+
+                        if not text:
+                            continue
+
+                        if ts > new_last_ts:
+                            new_last_ts = ts
+
+                        # Only look at user messages (incoming WhatsApp)
+                        if role == "user" and TASK_PREFIX in text:
+                            path = extract_task_path(text)
+                            if path:
+                                found_tasks.append((ts, path, sf.stem))
+                                logger.info(f"Found !task in session {sf.stem[:8]}: path={path}")
+
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+        except Exception as e:
+            logger.debug(f"Session read error {sf.name}: {e}")
+
+    state["last_seen_ts"] = new_last_ts
+
+    for ts, path, session_id in found_tasks:
+        if session_id in processed:
+            continue
+        processed.add(session_id)
+        logger.info(f"Running task from session {session_id[:8]}: {path}")
+        pid = run_openqueen(path)
+        if pid > 0:
+            send_whatsapp(f"openqueen: started {Path(path).name} (PID={pid}). Will notify when done.")
+
+    state["processed_sessions"] = list(processed)[-50:]  # Keep last 50
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    logger.info("openqueen-listen v2 started")
+    logger.info("openqueen-listen v3 started")
     logger.info(f"Queue file: {QUEUE_FILE}")
+    logger.info(f"Sessions dir: {SESSIONS_DIR}")
     logger.info(f"Poll interval: {POLL_INTERVAL}s")
+
+    state = load_state()
+    if not state.get("last_seen_ts"):
+        state["last_seen_ts"] = datetime.now(timezone.utc).isoformat()
+        save_state(state)
+        logger.info(f"Initialized last_seen_ts={state['last_seen_ts']}")
 
     while True:
         try:
-            poll()
+            poll_queue()
+            poll_sessions(state)
+            save_state(state)
         except Exception as e:
             logger.error(f"Poll error: {e}")
         time.sleep(POLL_INTERVAL)
