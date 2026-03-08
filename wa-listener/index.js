@@ -2,10 +2,11 @@
 /**
  * openqueen-wa-listener — standalone WhatsApp connection for openqueen.
  * Receives messages from Federico, sends replies back.
- * Clawdbot is not involved at all.
  *
  * Exposes POST http://127.0.0.1:19234/send { text, image? }
  * so openqueen (agent.py) can send notifications back.
+ *
+ * No commands to memorize — natural language understood for status/stop/log.
  */
 
 const {
@@ -21,12 +22,13 @@ const fs = require("fs");
 const qrcode = require("qrcode-terminal");
 const path = require("path");
 
-const AUTH_DIR = path.join(__dirname, "auth");
-const DISPATCH = path.join(__dirname, "..", "dispatch.py");
-const LOGS_DIR = "/root/openqueen/logs";
+const AUTH_DIR  = path.join(__dirname, "auth");
+const DISPATCH  = path.join(__dirname, "..", "dispatch.py");
+const LOGS_DIR  = "/root/openqueen/logs";
+const SENTINEL  = "/root/openqueen/WA_NEEDS_RELINK";
+const QR_FILE   = "/root/openqueen/wa-qr.txt";
 const PORT = 19234;
 
-// Group JID to listen on — set via env var after first link
 const GROUP_JID = process.env.OQ_GROUP_JID || "";
 
 let sock = null;
@@ -35,9 +37,49 @@ let replyJid = GROUP_JID;
 fs.mkdirSync(AUTH_DIR, { recursive: true });
 fs.mkdirSync(LOGS_DIR, { recursive: true });
 
+// ── Intent detection — no commands to memorize ────────────────────────────────
+
+function detectIntent(text) {
+  const t = text.toLowerCase().trim();
+  const short = t.length < 50;
+
+  // Stop intent: "stop", "cancel it", "kill it", "abort", "stop that", "stop the task"
+  if (short && /\b(stop|cancel|abort|halt|kill)\b/.test(t)) return "stop";
+
+  // Status intent: "?", "what's running", "running?", "status", "what are you doing"
+  if (short && /^\?+$|^status\??$|^running\??$|what.{0,15}running|what.{0,15}doing|what.{0,15}working/.test(t)) return "status";
+
+  // Log intent: "log", "what's happening", "how's it going", "progress", "any updates"
+  if (short && /^logs?\??$|what.{0,20}happen|how.{0,15}go(ing)?|progress\??|any updates?/.test(t)) return "log";
+
+  // Resume intent: "resume", "continue", "pick up", "carry on"
+  if (short && /\bresume\b|\bcontinue\b|pick.{0,5}up|carry.{0,5}on/.test(t)) return "resume";
+
+  return null; // treat as a task
+}
+
+// ── Dispatch helper ────────────────────────────────────────────────────────────
+
+function runDispatch(arg) {
+  const logFile = `${LOGS_DIR}/dispatch-${Date.now()}.log`;
+  const out = fs.openSync(logFile, "a");
+  const proc = spawn("python3", [DISPATCH, arg], {
+    detached: true,
+    stdio: ["ignore", out, out],
+    env: { ...process.env },
+  });
+  proc.unref();
+  fs.closeSync(out);
+}
+
 // ── HTTP send API ─────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
+  if (req.url === "/health") {
+    res.writeHead(200);
+    res.end('{"ok":true}');
+    return;
+  }
   if (req.method !== "POST" || req.url !== "/send") {
     res.writeHead(404);
     res.end();
@@ -51,13 +93,11 @@ const server = http.createServer((req, res) => {
       if (!sock) throw new Error("Not connected");
       const jid = replyJid;
       if (image && fs.existsSync(image)) {
-        await sock.sendMessage(jid, {
-          image: fs.readFileSync(image),
-          caption: text || "",
-        });
+        await sock.sendMessage(jid, { image: fs.readFileSync(image), mimetype: "image/png", caption: text || "" });
       } else {
         await sock.sendMessage(jid, { text: text || "" });
       }
+      console.log(`[wa-listener] sent → ${jid}`);
       res.writeHead(200);
       res.end('{"ok":true}');
     } catch (e) {
@@ -92,19 +132,28 @@ async function connect() {
     if (qr) {
       console.log("[wa-listener] Scan this QR code to link WhatsApp:");
       qrcode.generate(qr, { small: true });
+      try {
+        let qrText = "";
+        qrcode.generate(qr, { small: true }, (s) => { qrText = s; });
+        fs.writeFileSync(QR_FILE, `Generated: ${new Date().toISOString()}\n\n${qrText}\n`);
+      } catch (_) {}
     }
     if (connection === "open") {
       console.log("[wa-listener] Connected to WhatsApp");
+      try { fs.unlinkSync(SENTINEL); } catch (_) {}
+      try { fs.unlinkSync(QR_FILE); } catch (_) {}
     }
     if (connection === "close") {
       const code = lastDisconnect?.error instanceof Boom
-        ? lastDisconnect.error.output.statusCode
-        : 0;
+        ? lastDisconnect.error.output.statusCode : 0;
       if (code === DisconnectReason.loggedOut) {
-        console.error("[wa-listener] Logged out — delete auth/ and restart");
+        console.error("[wa-listener] *** LOGGED OUT *** After restart: cat ~/openqueen/wa-qr.txt");
+        try { fs.writeFileSync(SENTINEL, `Logged out at ${new Date().toISOString()}\nScan QR: cat ~/openqueen/wa-qr.txt\n`); } catch (_) {}
+        try { fs.readdirSync(AUTH_DIR).forEach(f => fs.unlinkSync(path.join(AUTH_DIR, f))); } catch (_) {}
         process.exit(1);
       }
       console.log(`[wa-listener] Disconnected (${code}), reconnecting in 5s...`);
+      sock = null;
       setTimeout(connect, 5000);
     }
   });
@@ -116,11 +165,17 @@ async function connect() {
       if (!msg.message) continue;
 
       const jid = msg.key.remoteJid;
-      // Refuse ALL messages unless OQ_GROUP_JID is explicitly configured
-      if (!GROUP_JID) { console.log(`[wa-listener] OQ_GROUP_JID not set — ignoring jid=${jid}`); continue; }
+      if (!GROUP_JID) { console.log(`[wa-listener] OQ_GROUP_JID not set — ignoring`); continue; }
       if (jid !== GROUP_JID) continue;
 
       replyJid = jid;
+
+      // ── Input type filtering ──────────────────────────────────────────────
+      const msgType = Object.keys(msg.message)[0];
+      if (["audioMessage", "videoMessage", "stickerMessage", "pttMessage"].includes(msgType)) {
+        await sock.sendMessage(jid, { text: "Type your task — voice/video not supported here." });
+        continue;
+      }
 
       const text =
         msg.message?.conversation ||
@@ -130,17 +185,23 @@ async function connect() {
 
       if (!text.trim()) continue;
 
-      console.log(`[wa-listener] jid=${jid} → ${text.slice(0, 100)}`);
+      // Ignore pure-emoji or reaction messages (no Latin/digit chars)
+      if (!/[a-zA-Z0-9?]/.test(text)) continue;
 
-      const logFile = `${LOGS_DIR}/dispatch-${Date.now()}.log`;
-      const out = fs.openSync(logFile, "a");
-      const proc = spawn("python3", [DISPATCH, text.trim()], {
-        detached: true,
-        stdio: ["ignore", out, out],
-        env: { ...process.env },
-      });
-      proc.unref();
-      fs.closeSync(out);
+      const trimmed = text.trim();
+      console.log(`[wa-listener] → ${trimmed.slice(0, 100)}`);
+
+      // ── Natural language intent detection ─────────────────────────────────
+      const intent = detectIntent(trimmed);
+
+      if (intent === "status" || intent === "stop" || intent === "log" || intent === "resume") {
+        // Route to dispatch.py which handles these with lock awareness
+        runDispatch(`__${intent}__`);
+        continue;
+      }
+
+      // ── Dispatch task ─────────────────────────────────────────────────────
+      runDispatch(trimmed);
     }
   });
 }

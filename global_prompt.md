@@ -143,6 +143,19 @@ Rules:
 - If all Done When checks passed in one run_bash call, paste that output directly
 - No "Summary:" label, no "Commits:" label — use the compact format above
 
+**Proof must show real output, not structural checks:**
+- WRONG: "running: OK" (process exists but task may not be done)
+- WRONG: "report: OK" (file exists but may be empty or mid-run)
+- RIGHT: paste the actual content that proves the task completed — test results, scores,
+  last lines of output, generated text, screenshot paths with confirmation they were taken
+
+**For browser/UI tasks — screenshots are mandatory:**
+- Take a screenshot BEFORE submitting any action (baseline)
+- Take a screenshot AFTER completion (result)
+- Include screenshot paths in the Proof section
+- Never call notify() on a task that is still running in the background — wait for it to finish
+- If a long-running process is needed, run it synchronously or tail its output until done
+
 ---
 
 ## 10. Project Status File
@@ -197,3 +210,47 @@ skill files loaded from `context_keys` declared in task.md.
 - Never read or modify .env* files unless env_file is specified in task.md
 - Never guess at missing credentials — escalate immediately
 - Log every action: what you're about to do and why, before each tool call
+
+
+---
+
+## 12. Transcript Access
+
+A full untruncated record of this session is always available via read_transcript.
+
+Use it when:
+- History was compressed and you need detail from earlier iterations
+- Resuming a session and want to understand exactly what was tried before
+- A worker output was truncated and you need to see more
+- You cannot remember what a bash command returned
+
+read_transcript(last_n=20) -- last 20 entries (default, safe)
+read_transcript(search="error") -- filter by keyword
+read_transcript(last_n=50) -- max 50 entries (hard-capped at 8k chars to protect context)
+
+Nothing is ever lost. The transcript is the complete source of truth.
+
+---
+
+## 13. Browser Testing Standards
+
+When writing Playwright scripts for browser testing:
+
+- **Viewport**: always `page.set_viewport_size({"width": 1280, "height": 900})` after connecting
+- **Full-page screenshots**: `page.screenshot(path=..., full_page=True)` — never clip
+- **Wait for network**: `page.wait_for_load_state('networkidle')` after navigation
+- **Synchronous only**: never background a test process before calling notify()
+- **Auto-send screenshots to WA**: after each screenshot is saved, immediately send it:
+  `curl -s -X POST http://127.0.0.1:19234/send -H "Content-Type: application/json" -d '{"text": "landing page", "image": "/abs/path.png"}'`
+- **Proof in notify**: list each screenshot path and confirm it was sent
+
+---
+
+## 14. Issue Tracking
+
+When you find bugs, issues, or test failures during any task:
+
+- **Always write to the project's own ISSUES.md**: `<project_path>/ISSUES.md`
+- Append — never overwrite. Use severity P0/P1/P2/P3 and status OPEN/FIXED.
+- If ISSUES.md doesn't exist, create it.
+- Never write issues only to a log directory — the project repo is the source of truth.

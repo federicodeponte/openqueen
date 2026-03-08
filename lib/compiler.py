@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
-openqueen task_compiler — turns natural language into a task.md file.
-Uses Claude Sonnet (same intelligence as the worker) to understand the request
-and produce a well-scoped task.md.
-Prints the path to the generated task.md (or nothing on failure).
+openqueen lib/compiler — turns natural language into a task.md file.
+Importable: call compile_task(nl, api_key) -> path_str | None
 """
 import json
 import os
@@ -13,36 +11,58 @@ import sys
 import time
 from pathlib import Path
 
-PROJECTS_FILE = Path("/root/openqueen/projects.json")
 TASKS_DIR = Path("/tmp/oq-tasks")
 TASKS_DIR.mkdir(parents=True, exist_ok=True)
+OQ_HOME = Path(os.environ.get("OPENQUEEN_HOME", str(Path.home() / "openqueen")))
 
-CONTEXT_KEYS = ["global:stack", "global:machines", "skills:backend", "skills:frontend", "skills:user_flows"]
+
+def _load_config() -> dict:
+    cfg_path = OQ_HOME / "config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text())
+        cfg["log_dir"] = str(Path(cfg.get("log_dir", "~/openqueen/logs")).expanduser())
+        return cfg
+    except Exception:
+        return {"log_dir": str(Path("~/openqueen/logs").expanduser())}
 
 
 def load_projects() -> list[dict]:
-    if PROJECTS_FILE.exists():
-        return json.loads(PROJECTS_FILE.read_text())
-    return []
+    projects_file = OQ_HOME / "projects.json"
+    if projects_file.exists():
+        return json.loads(projects_file.read_text())
+    # Auto-scan OQ_WORKSPACE for git repos (cap 50)
+    workspace = os.environ.get("OQ_WORKSPACE", "")
+    if not workspace:
+        return []
+    ws = Path(workspace).expanduser()
+    if not ws.is_dir():
+        return []
+    projects = []
+    for d in sorted(ws.iterdir()):
+        if d.is_dir() and (d / ".git").exists():
+            projects.append({
+                "name": d.name,
+                "path": str(d),
+                "description": "",
+            })
+            if len(projects) >= 50:
+                break
+    return projects
 
 
 def read_project_context(proj: dict) -> str:
     path = Path(proj["path"]).expanduser()
     ctx = f"Project: {proj['name']}\nPath: {path}\nDescription: {proj.get('description', '')}\n"
-
     for filename in ["CLAUDE.md", "README.md"]:
         f = path / filename
         if f.exists():
-            content = f.read_text()[:10000]
-            ctx += f"\n### {filename}\n{content}\n"
+            ctx += f"\n### {filename}\n{f.read_text()[:10000]}\n"
             break
-
     for f in ["package.json", "requirements.txt", "pyproject.toml"]:
         fp = path / f
         if fp.exists():
             ctx += f"\n### {f}\n{fp.read_text()[:2000]}\n"
             break
-
     return ctx
 
 
@@ -52,21 +72,15 @@ def build_prompt(nl: str, projects: list[dict]) -> str:
         for p in projects
     )
     project_contexts = "\n\n".join(read_project_context(p) for p in projects)
-    available_context_keys = "\n".join(f"  - {k}" for k in CONTEXT_KEYS)
 
     return f"""You are a task compiler for openqueen, an AI coding orchestrator.
 Your job: convert a natural language coding request into a task.md file that a Claude worker will execute.
-
-You have the same codebase knowledge as the worker — use it to write precise, scoped tasks.
 
 ## Available Projects
 {project_list}
 
 ## Project Details
 {project_contexts}
-
-## Available Context Keys
-{available_context_keys}
 
 ## User Request
 {nl}
@@ -83,8 +97,6 @@ Output ONLY the task.md content below. No explanation, no code fences, nothing e
 path: <absolute expanded path, no ~>
 worker: claude
 max_iterations: <8 simple, 12 multi-file, 15 complex>
-context:
-  - <only relevant context keys>
 
 ## Objective
 <3-5 sentences. Reference specific files and line numbers where known. One clear deliverable.>
@@ -95,12 +107,11 @@ context:
 
 Rules:
 - Summary: one human sentence, no angle brackets
-- path: absolute (expand ~ to /root)
-- Done When: ONLY real bash that checks DELIVERABLES (output files, written content, db rows).
-  NEVER check live site health (curl, ping) — those pass even if no work was done.
-  NEVER use placeholders. Every command must work as written right now.
+- path: absolute (expand ~ to /root on this machine)
+- Done When: ONLY real bash that checks DELIVERABLES (output files, written content).
+  NEVER check live site health (curl, ping).
+  NEVER use placeholders. Every command must work as written.
   Prefer: test -f, grep -q, wc -l, python3 -c "import json; json.load(open(...))"
-- Reference specific files you know exist in the project
 - Scope to what ONE worker can do in max_iterations
 """
 
@@ -142,7 +153,6 @@ def parse_task_md(content: str) -> dict | None:
             cmd = line.strip().lstrip("-").strip()
             if cmd and not cmd.startswith("<"):
                 done_when_lines.append(cmd)
-
     fm["done_when_count"] = len(done_when_lines)
     if not fm.get("name") or not fm.get("path"):
         return None
@@ -151,57 +161,54 @@ def parse_task_md(content: str) -> dict | None:
     return fm
 
 
-def main():
-    if len(sys.argv) < 2:
-        sys.exit(1)
-
-    nl = " ".join(sys.argv[1:]).strip()
+def compile_task(nl: str, api_key: str = "") -> str | None:
+    """Compile natural language to task.md. Returns file path or None on failure."""
     projects = load_projects()
-
     if not projects:
-        print("No projects configured in /root/openqueen/projects.json", file=sys.stderr)
-        sys.exit(1)
+        print("[compiler] No projects found — set OQ_WORKSPACE or create projects.json", file=sys.stderr)
+        return None
+
+    env_override = {}
+    if api_key:
+        env_override["GOOGLE_API_KEY"] = api_key
 
     prompt = build_prompt(nl, projects)
 
-    def attempt(extra_instruction: str = "") -> str | None:
-        p = prompt + extra_instruction
+    def attempt(extra: str = "") -> str | None:
         try:
-            raw = call_claude(p)
+            return call_claude(prompt + extra)
         except Exception as e:
-            print(f"Claude call failed: {e}", file=sys.stderr)
+            print(f"[compiler] Claude call failed: {e}", file=sys.stderr)
             return None
-        raw = re.sub(r"^```(?:yaml|markdown)?\n?", "", raw)
-        raw = re.sub(r"\n?```$", "", raw)
-        return raw.strip()
 
     content = attempt()
+    if content:
+        content = re.sub(r"^```(?:yaml|markdown)?\n?", "", content)
+        content = re.sub(r"\n?```$", "", content).strip()
     fm = parse_task_md(content) if content else None
 
     if not fm:
-        print("First attempt invalid, retrying...", file=sys.stderr)
+        print("[compiler] First attempt invalid, retrying...", file=sys.stderr)
         content = attempt(
             "\n\nIMPORTANT: Previous response was invalid. "
             "Output ONLY the task.md. Summary must be one plain sentence (no angle brackets). "
             "Done When must be real bash commands. Absolute paths only."
         )
+        if content:
+            content = re.sub(r"^```(?:yaml|markdown)?\n?", "", content)
+            content = re.sub(r"\n?```$", "", content).strip()
         fm = parse_task_md(content) if content else None
 
     if not fm:
-        print(f"Invalid task.md after retry:\n{(content or '')[:500]}", file=sys.stderr)
-        sys.exit(1)
+        print(f"[compiler] Invalid task.md after retry:\n{(content or '')[:500]}", file=sys.stderr)
+        return None
 
     task_path = Path(fm["path"]).expanduser()
     if not task_path.exists():
-        print(f"Project path does not exist: {task_path}", file=sys.stderr)
-        sys.exit(1)
+        print(f"[compiler] Project path does not exist: {task_path}", file=sys.stderr)
+        return None
 
     ts = int(time.time())
     out_path = TASKS_DIR / f"{fm['name']}-{ts}.md"
     out_path.write_text(content)
-
-    print(str(out_path))
-
-
-if __name__ == "__main__":
-    main()
+    return str(out_path)

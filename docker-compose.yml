@@ -1,0 +1,44 @@
+version: "3.9"
+
+# OpenQueen — Docker Compose (optional, for containerized deployments)
+# Usage: docker compose up -d
+# Requires: .env file with GOOGLE_API_KEY, OQ_TRANSPORT, etc.
+
+services:
+  openqueen:
+    build: .
+    container_name: openqueen
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - OPENQUEEN_HOME=/app
+    volumes:
+      - ./logs:/app/logs
+      - ./auth:/app/auth
+      - ./tasks:/app/tasks
+      - ./projects.json:/app/projects.json:ro
+    command: python3 listen.py
+    depends_on:
+      - wa-listener
+    networks:
+      - openqueen-net
+
+  wa-listener:
+    build:
+      context: ./wa-listener
+      dockerfile: Dockerfile
+    container_name: openqueen-wa
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:19234:19234"
+    volumes:
+      - ./auth:/app/auth
+    networks:
+      - openqueen-net
+    profiles:
+      - whatsapp
+
+networks:
+  openqueen-net:
+    driver: bridge

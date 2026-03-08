@@ -1,0 +1,12 @@
+[
+  {
+    name: my-api,
+    path: ~/my-api,
+    description: REST API backend
+  },
+  {
+    name: frontend,
+    path: ~/frontend,
+    description: React dashboard
+  }
+]

@@ -6,3 +6,7 @@ wa-listener/.env
 __pycache__/
 *.pyc
 /tmp/oq-tasks/
+WORKPLAN-*.md
+projects.json
+.env
+auth/

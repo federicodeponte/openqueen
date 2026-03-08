@@ -1,11 +1,9 @@
 {
-  "max_iterations": 10,
-  "max_retries_on_failure": 3,
-  "worker_timeout_seconds": 300,
-  "bash_timeout_seconds": 60,
+  "max_iterations": 50,
+  "worker_timeout_seconds": 3600,
+  "bash_timeout_seconds": 300,
   "output_truncate_chars": 6000,
-  "history_summarize_at_iteration": 5,
-  "whatsapp_group": "120363423286386596@g.us",
-  "whatsapp_bridge": "~/queen/whatsapp_bridge.py",
-  "log_dir": "~/openqueen/logs"
+  "whatsapp_group": "120363424057336289@g.us",
+  "log_dir": "~/openqueen/logs",
+  "history_max_chars": 60000
 }

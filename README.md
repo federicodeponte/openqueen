@@ -1,93 +1,176 @@
-<!-- openqueen-test -->
-# openqueen
+# OpenQueen
 
-Gemini 3.1 Pro orchestrates Claude/Codex workers autonomously on AX41.
-You write a task file. Gemini drives the worker until done, then notifies you on WhatsApp.
+**Autonomous coding agent controlled by WhatsApp or Telegram.**
 
-## Install (AX41)
+Send a message. Gemini 3.1 Pro compiles it into a task, drives Claude/Codex to completion, and notifies you when done — all while you're away from your desk.
 
-```bash
-pip3 install google-genai python-dotenv pytest --break-system-packages
-echo 'export GOOGLE_API_KEY=...' >> ~/.zshrc && source ~/.zshrc
-ln -sf ~/openqueen/agent.py /usr/local/bin/openqueen
-chmod +x ~/openqueen/agent.py
 ```
-
-## Usage
-
-```bash
-openqueen ~/openqueen/tasks/my-task.md
-
-# Tail the log while it runs
-tail -f ~/openqueen/logs/my-task-*.log
-```
-
-## task.md format
-
-```markdown
-# Task: short-slug-name
-
-## Project
-path: ~/path/to/project        # required
-worker: claude                 # claude | codex (default: claude)
-new_project: false             # true = Claude creates the dir + git init
-env_file: ~/project/.env.local # optional — vars injected into worker env
-
-## Objective
-What needs to be done. Be specific.
-
-## Context / Constraints
-Anything Gemini and the worker need to know.
-
-## Done When
-- Specific verifiable criterion 1
-- Specific verifiable criterion 2
-```
-
-## Config (`config.json`)
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `max_iterations` | 10 | Hard cap on Gemini iterations |
-| `max_retries_on_failure` | 3 | Same error N times → escalate |
-| `worker_timeout_seconds` | 300 | Per claude/codex call timeout |
-| `bash_timeout_seconds` | 60 | Per run_bash call timeout |
-| `output_truncate_chars` | 6000 | Max chars returned to Gemini per call |
-| `history_summarize_at_iteration` | 5 | Compress history at this iteration |
-| `whatsapp_group` | test group | WhatsApp group ID for notifications |
-| `whatsapp_bridge` | `~/queen/whatsapp_bridge.py` | Bridge script path |
-| `log_dir` | `~/openqueen/logs` | Log directory |
-
-## Escalation
-
-Gemini escalates (WhatsApp message + exit 1) on:
-- Missing credentials or access
-- Git conflicts requiring human decision
-- Same error 3 times with no change
-- Max iterations reached
-
-If the WhatsApp bridge (clawdbot) is down, escalation is written to:
-- `~/openqueen/logs/NOTIFY_FAILED-<task>-<date>.txt`
-- `~/openqueen/ESCALATION_PENDING.txt`
-
-## Tests
-
-```bash
-cd ~/openqueen
-python3 -m pytest tests/ -v
+You: "add dark mode to the dashboard"
+  └─► Gemini compiles task → Claude executes → "Done! 3 files changed" ✓
 ```
 
 ## Architecture
 
 ```
-openqueen task.md
-      ↓
-Gemini 3.1 Pro (orchestrator)
-      ↓ tool calls
-run_worker / run_bash / read_file / write_file / notify / escalate
-      ↓
-claude -p --permission-mode dontAsk   (research, generic, new projects)
-codex exec - --dangerously-bypass-... (coding, bug fixes, tests)
-      ↓
-WhatsApp notification on done or blocked
+WhatsApp / Telegram
+       │
+   listen.py          ← watches for !task messages
+       │
+  dispatch.py         ← parallel task runner (same project queues)
+       │
+  lib/compiler.py     ← Gemini 3.1 Pro compiles NL → task.md
+       │
+   agent.py           ← Gemini orchestrates Claude/Codex worker
+       │
+  monitor.py          ← watchdog, timeout, Done When checks
+       │
+   notify             ← send result back to your phone
 ```
+
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/federicodeponte/openqueen/main/install.sh | bash
+```
+
+Then configure:
+
+```bash
+openqueen init
+```
+
+**Requirements:** Python 3.10+, git. Node.js 18+ for WhatsApp transport.
+
+## Quick Start
+
+1. **Install** (30 seconds):
+   ```bash
+   curl -fsSL .../install.sh | bash
+   ```
+
+2. **Configure** (2 minutes):
+   ```bash
+   openqueen init
+   # → enter Gemini API key
+   # → connect WhatsApp or Telegram
+   ```
+
+3. **Start**:
+   ```bash
+   systemctl enable --now openqueen
+   ```
+
+4. **Use** — send a message from your phone:
+   ```
+   fix the auth bug in my-api
+   add tests for the payment module
+   refactor the dashboard to use TypeScript
+   ```
+
+## Transport Options
+
+| Transport | Setup | Risk |
+|-----------|-------|------|
+| **Telegram** (recommended) | Create bot via @BotFather | None — official API |
+| **WhatsApp** | Scan QR code | ToS risk — personal use only |
+
+## Configuration
+
+Edit `~/openqueen/.env`:
+
+```env
+OPENQUEEN_HOME=~/openqueen
+GOOGLE_API_KEY=your_gemini_key
+
+# Transport
+OQ_TRANSPORT=telegram          # or: whatsapp
+OQ_WORKER=claude               # or: codex, gemini
+
+# Telegram
+OQ_TELEGRAM_TOKEN=your_bot_token
+OQ_TELEGRAM_CHAT_ID=your_chat_id
+
+# WhatsApp
+# OQ_GROUP_JID=1234567890-1234@g.us
+
+# Auto-scan workspace for projects (optional)
+# OQ_WORKSPACE=~/projects
+```
+
+Edit `~/openqueen/config.json` for advanced settings:
+
+```json
+{
+  "max_iterations": 20,
+  "timeout_minutes": 30,
+  "history_max_chars": 60000,
+  "worker": "claude"
+}
+```
+
+## Task Files
+
+Tasks are compiled automatically from natural language. You can also write them manually:
+
+```markdown
+# Task: fix-auth-bug
+
+## Project
+path: ~/my-project
+worker: claude
+max_iterations: 15
+
+## Objective
+Fix the null pointer exception in auth.py line 42.
+The bug triggers when user.email is None.
+
+## Done When
+- test -f ~/my-project/auth.py
+- python3 -m pytest ~/my-project/tests/test_auth.py -q
+```
+
+Send the file path or drop it in `~/openqueen/tasks/`.
+
+## Projects
+
+Define your projects in `~/openqueen/projects.json`:
+
+```json
+[
+  {"name": "my-api", "path": "~/my-api", "description": "REST API backend"},
+  {"name": "frontend", "path": "~/frontend", "description": "React dashboard"}
+]
+```
+
+Or set `OQ_WORKSPACE=~/projects` to auto-scan for git repositories.
+
+## Commands
+
+```bash
+openqueen init        # Setup wizard
+openqueen status      # Show running tasks
+openqueen logs        # Tail session log
+openqueen run <task>  # Run a task.md file directly
+openqueen version     # Show version
+```
+
+## Docker (optional)
+
+```bash
+cp .env.example .env  # fill in your keys
+docker compose up -d
+```
+
+## Development
+
+```bash
+git clone https://github.com/federicodeponte/openqueen
+cd openqueen
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pytest tests/ -v
+```
+
+## License
+
+MIT
