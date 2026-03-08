@@ -11,6 +11,7 @@ This daemon runs on the HOST and spawns openqueen when a task is detected.
 """
 
 import json
+import urllib.request
 import logging
 import os
 import re
@@ -20,13 +21,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-QUEUE_FILE = Path("/opt/clawdbot/data/openqueen-queue.json")
-SESSIONS_DIR = Path("/opt/clawdbot/data/agents/main/sessions")
-STATE_FILE = Path("/root/.openqueen-listen-state.json")
-BRIDGE = Path("/root/queen/whatsapp_bridge.py")
+OQ_HOME = Path(os.environ.get("OPENQUEEN_HOME", str(Path.home() / "openqueen")))
+QUEUE_FILE = Path(os.environ.get("OQ_QUEUE_FILE", "/opt/clawdbot/data/openqueen-queue.json"))
+SESSIONS_DIR = Path(os.environ.get("OQ_SESSIONS_DIR", "/opt/clawdbot/data/agents/main/sessions"))
+STATE_FILE = Path(os.environ.get("OQ_STATE_FILE", str(Path.home() / ".openqueen-listen-state.json")))
+BRIDGE = Path(os.environ.get("OQ_BRIDGE", "/root/queen/whatsapp_bridge.py"))
 POLL_INTERVAL = 15  # seconds
 
-RUNS_DIR = Path("/root/openqueen/logs")
+RUNS_DIR = OQ_HOME / "logs"
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -230,10 +232,112 @@ def poll_sessions(state: dict):
     state["processed_sessions"] = list(processed)[-50:]  # Keep last 50
 
 
+
+
+# ── Telegram transport ────────────────────────────────────────────────────────
+
+def _notify_telegram(text: str):
+    """Send a message via Telegram Bot API. Requires OQ_TELEGRAM_TOKEN and OQ_TELEGRAM_CHAT_ID."""
+    token = os.environ.get("OQ_TELEGRAM_TOKEN", "")
+    chat_id = os.environ.get("OQ_TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        logger.warning("Telegram not configured: missing OQ_TELEGRAM_TOKEN or OQ_TELEGRAM_CHAT_ID")
+        return
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
+        urllib.request.urlopen(
+            urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}),
+            timeout=10,
+        )
+    except Exception as e:
+        logger.error(f"Telegram send error: {e}")
+
+
+def handle_nl_task(text: str):
+    """Compile a natural-language task request and run openqueen on it."""
+    import sys as _sys
+    oq_home = Path(os.environ.get("OPENQUEEN_HOME", str(Path.home() / "openqueen")))
+    _sys.path.insert(0, str(oq_home))
+    try:
+        from lib.compiler import compile_task
+    except ImportError:
+        logger.error("Cannot import lib.compiler — is OPENQUEEN_HOME correct?")
+        _notify_telegram("Internal error: compiler not found.")
+        return
+
+    _notify_telegram("Compiling task...")
+    try:
+        task_path = compile_task(text, api_key=get_api_key())
+    except Exception as e:
+        logger.error(f"compile_task error: {e}")
+        _notify_telegram(f"Compilation failed: {e}")
+        return
+
+    if not task_path:
+        _notify_telegram(
+            "I couldn't figure out exactly what to do. "
+            "Try being more specific — mention the project name and what needs to change."
+        )
+        return
+
+    logger.info(f"Compiled task: {task_path}")
+    pid = run_openqueen(task_path)
+    if pid > 0:
+        from pathlib import Path as _Path
+        _notify_telegram(
+            f"Got it — starting *{_Path(task_path).stem}* (PID={pid}). Will notify when done."
+        )
+    else:
+        _notify_telegram("Failed to start agent. Check logs.")
+
+
+def run_telegram_listener():
+    """Long-poll Telegram Bot API for incoming messages and dispatch tasks."""
+    token = os.environ.get("OQ_TELEGRAM_TOKEN", "")
+    chat_id = str(os.environ.get("OQ_TELEGRAM_CHAT_ID", ""))
+    if not token or not chat_id:
+        logger.error("OQ_TELEGRAM_TOKEN and OQ_TELEGRAM_CHAT_ID required for Telegram transport")
+        sys.exit(1)
+
+    logger.info(f"openqueen-listen (telegram) started, chat_id={chat_id}")
+    offset = 0
+
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{token}/getUpdates?offset={offset}&timeout=30"
+            with urllib.request.urlopen(url, timeout=35) as r:
+                data = json.loads(r.read())
+
+            for update in data.get("result", []):
+                offset = update["update_id"] + 1
+                msg = update.get("message", {})
+                from_chat = str(msg.get("chat", {}).get("id", ""))
+                text = msg.get("text", "").strip()
+
+                if from_chat != chat_id:
+                    continue
+                if not text or text.startswith("/"):
+                    continue
+
+                logger.info(f"Telegram: received task request: {text[:80]}")
+                handle_nl_task(text)
+
+        except Exception as e:
+            logger.warning(f"Telegram poll error: {e}")
+            time.sleep(5)
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    logger.info("openqueen-listen v4 started")
+    transport = os.environ.get("OQ_TRANSPORT", "whatsapp")
+    logger.info(f"openqueen-listen v4 started (transport={transport})")
+
+    if transport == "telegram":
+        run_telegram_listener()
+        return
+
+    # WhatsApp / clawdbot path
     logger.info(f"Queue file: {QUEUE_FILE}")
     logger.info(f"Sessions dir: {SESSIONS_DIR}")
     logger.info(f"Poll interval: {POLL_INTERVAL}s")
@@ -246,6 +350,7 @@ def main():
 
     while True:
         try:
+            poll_queue()
             poll_sessions(state)
             save_state(state)
         except Exception as e:

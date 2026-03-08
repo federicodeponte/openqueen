@@ -46,6 +46,32 @@ def send_wa(text: str, image: str = None):
         print(f"[monitor] send_wa error: {e}", file=sys.stderr)
 
 
+def send_telegram(text: str):
+    token = os.environ.get("OQ_TELEGRAM_TOKEN", "")
+    chat_id = os.environ.get("OQ_TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        print("[monitor] Telegram not configured", file=sys.stderr)
+        return
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
+        urllib.request.urlopen(
+            urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}),
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[monitor] send_telegram error: {e}", file=sys.stderr)
+
+
+def notify(text: str, image: str = None):
+    transport = os.environ.get("OQ_TRANSPORT", "whatsapp")
+    if transport == "telegram":
+        send_telegram(text)
+    else:
+        notify(text, image)
+
+
+
 def get_api_key() -> str:
     try:
         for line in Path("/etc/environment").read_text().splitlines():
@@ -106,7 +132,7 @@ def _start_queued(item: dict):
             env=env, start_new_session=True,
         )
     except Exception as e:
-        send_wa(f"Failed to start queued task: {e}")
+        notify(f"Failed to start queued task: {e}")
         return
     lock_data = {
         "task": item["task_name"], "summary": item["summary"],
@@ -115,7 +141,7 @@ def _start_queued(item: dict):
     }
     (LOGS_DIR / f"RUNNING-{item['task_name']}.lock").write_text(json.dumps(lock_data))
     label = item["summary"] or item["task_name"]
-    send_wa(f"Starting now: _{label}_")
+    notify(f"Starting now: _{label}_")
     # Spawn a new monitor for this queued task
     subprocess.Popen(
         ["python3", str(OQ_HOME / "monitor.py"),
@@ -203,7 +229,7 @@ def main():
         if proc_path.exists():
             elapsed = int((time.time() - started) / 60)
             label = summary or task_name
-            send_wa(f"Still working on: _{label}_ ({elapsed} min in)...")
+            notify(f"Still working on: _{label}_ ({elapsed} min in)...")
 
     # Task finished
     release_lock(task_name)
@@ -220,9 +246,9 @@ def main():
             human = summarize_log_with_gemini(log_text, summary)
             label = summary or task_name
             if human:
-                send_wa(f"Something went wrong — {human}\n\nTry again or rephrase the task.")
+                notify(f"Something went wrong — {human}\n\nTry again or rephrase the task.")
             else:
-                send_wa(f"Something went wrong with: _{label}_\n\nTry again or rephrase the task.")
+                notify(f"Something went wrong with: _{label}_\n\nTry again or rephrase the task.")
     except Exception:
         pass
 

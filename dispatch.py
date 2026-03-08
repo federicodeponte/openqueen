@@ -51,6 +51,32 @@ def send_wa(text: str, image: str = None):
         print(f"[dispatch] send_wa error: {e}", file=sys.stderr)
 
 
+def send_telegram(text: str):
+    token = os.environ.get("OQ_TELEGRAM_TOKEN", "")
+    chat_id = os.environ.get("OQ_TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        print("[dispatch] Telegram not configured", file=sys.stderr)
+        return
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
+        urllib.request.urlopen(
+            urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}),
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[dispatch] send_telegram error: {e}", file=sys.stderr)
+
+
+def notify(text: str, image: str = None):
+    transport = os.environ.get("OQ_TRANSPORT", "whatsapp")
+    if transport == "telegram":
+        send_telegram(text)
+    else:
+        notify(text, image)
+
+
+
 def get_api_key() -> str:
     try:
         for line in Path("/etc/environment").read_text().splitlines():
@@ -377,7 +403,7 @@ def cmd_resume() -> str:
         others = ", ".join(s.get("summary") or s.get("task_name", "?") for _, s in sessions[1:3])
         extra = f"\n({len(sessions)-1} other interrupted: {others})"
 
-    send_wa(f"Resuming: _{label}_ (from iteration {iter_done + 1})...{extra}")
+    notify(f"Resuming: _{label}_ (from iteration {iter_done + 1})...{extra}")
     _spawn_monitor(proc.pid, task_name, label, time.time())
     return ""
 
@@ -393,7 +419,7 @@ def _start_task(task_file: str, task_name: str, summary: str, project_path: str,
             start_new_session=True,
         )
     except Exception as e:
-        send_wa(f"Failed to start agent: {e}")
+        notify(f"Failed to start agent: {e}")
         return
 
     started = time.time()
@@ -401,13 +427,13 @@ def _start_task(task_file: str, task_name: str, summary: str, project_path: str,
 
     if queued:
         first = summary[0].lower() + summary[1:] if summary else "queued task"
-        send_wa(f"Starting now: _{first}_")
+        notify(f"Starting now: _{first}_")
     else:
         if summary:
             first = summary[0].lower() + summary[1:]
-            send_wa(f"Got it — {first}.")
+            notify(f"Got it — {first}.")
         else:
-            send_wa("Got it, working on it...")
+            notify("Got it, working on it...")
 
     print(f"[dispatch] spawned PID={proc.pid} task={task_name} project={project_path}")
 
@@ -472,18 +498,18 @@ def main():
     nl_task = " ".join(sys.argv[1:]).strip()
 
     if nl_task == "__status__":
-        send_wa(cmd_status())
+        notify(cmd_status())
         return
     if nl_task == "__stop__":
-        send_wa(cmd_stop())
+        notify(cmd_stop())
         return
     if nl_task == "__log__":
-        send_wa(cmd_log())
+        notify(cmd_log())
         return
     if nl_task == "__resume__":
         msg = cmd_resume()
         if msg:
-            send_wa(msg)
+            notify(msg)
         return
 
     # Watchdog: re-spawn any dead monitors before doing new work
@@ -499,7 +525,7 @@ def main():
         # Compile the task to a task.md file
         task_path = compile_task(nl_task)
         if not task_path:
-            send_wa(
+            notify(
                 "I couldn't figure out exactly what to do. "
                 "Try being more specific — mention the project name and what needs to change."
             )
@@ -517,7 +543,7 @@ def main():
         enqueue_task(task_path, task_name, summary, project_path)
         running_label = existing.get("summary") or existing.get("task", "unknown")
         queue_label = summary or task_name
-        send_wa(
+        notify(
             f"Got it — _{queue_label}_ queued.\n"
             f"Will start once _{running_label}_ finishes."
         )
