@@ -21,12 +21,14 @@ const http = require("http");
 const fs = require("fs");
 const qrcode = require("qrcode-terminal");
 const path = require("path");
+const os = require("os");
 
 const AUTH_DIR  = path.join(__dirname, "auth");
 const DISPATCH  = path.join(__dirname, "..", "dispatch.py");
 const LOGS_DIR  = "/root/openqueen/logs";
 const SENTINEL  = "/root/openqueen/WA_NEEDS_RELINK";
 const QR_FILE   = "/root/openqueen/wa-qr.txt";
+const QUEUE_FILE = process.env.OQ_QUEUE_FILE || path.join(process.env.OPENQUEEN_HOME || path.join(os.homedir(), "openqueen"), "QUEUE.json");
 const PORT = 19234;
 
 const GROUP_JID = process.env.OQ_GROUP_JID || "";
@@ -70,6 +72,20 @@ function runDispatch(arg) {
   });
   proc.unref();
   fs.closeSync(out);
+}
+
+// ── Write to queue file (standalone mode, no clawdbot) ───────────────────────
+
+function writeToQueue(text) {
+  const key = ;
+  const entry = { [key]: { task_path: null, nl: text, ts: new Date().toISOString() } };
+  // Merge with existing queue if present (unlikely but safe)
+  let queue = {};
+  try { queue = JSON.parse(fs.readFileSync(QUEUE_FILE, "utf8")); } catch (_) {}
+  Object.assign(queue, entry);
+  fs.mkdirSync(path.dirname(QUEUE_FILE), { recursive: true });
+  fs.writeFileSync(QUEUE_FILE, JSON.stringify(queue, null, 2));
+  console.log();
 }
 
 // ── HTTP send API ─────────────────────────────────────────────────────────────
@@ -200,8 +216,9 @@ async function connect() {
         continue;
       }
 
-      // ── Dispatch task ─────────────────────────────────────────────────────
+      // ── Dispatch task + write to standalone queue ──────────────────────────────
       runDispatch(trimmed);
+      writeToQueue(trimmed);
     }
   });
 }

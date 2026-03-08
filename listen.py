@@ -123,27 +123,69 @@ def extract_task_path(text: str) -> str | None:
 
 # ── Poll queue file ───────────────────────────────────────────────────────────
 
+def compile_nl_task(nl: str) -> str | None:
+    """Compile a natural-language request to a task file path via lib.compiler."""
+    import sys as _sys
+    oq_home = Path(os.environ.get("OPENQUEEN_HOME", str(Path.home() / "openqueen")))
+    _sys.path.insert(0, str(oq_home))
+    try:
+        from lib.compiler import compile_task
+    except ImportError:
+        logger.error("Cannot import lib.compiler — is OPENQUEEN_HOME correct?")
+        return None
+    try:
+        task_path = compile_task(nl, api_key=get_api_key())
+        return task_path
+    except Exception as e:
+        logger.error(f"compile_task error: {e}")
+        return None
+
+
 def poll_queue():
     if not QUEUE_FILE.exists():
         return
     try:
-        content = QUEUE_FILE.read_text().strip()
-        if not content:
+        raw = QUEUE_FILE.read_text().strip()
+        if not raw:
             return
-        entry = json.loads(content)
+        data = json.loads(raw)
     except Exception as e:
         logger.error(f"Queue parse error: {e}")
         QUEUE_FILE.unlink(missing_ok=True)
         return
 
-    task_path = entry.get("task_path", "").strip()
-    logger.info(f"Queue file: task_path={task_path}")
     QUEUE_FILE.unlink(missing_ok=True)
 
-    if task_path:
-        pid = run_openqueen(task_path)
-        if pid > 0:
-            send_whatsapp(f"openqueen: started {Path(task_path).name} (PID={pid}). Will notify when done.")
+    # Support both legacy single-entry format and dict-of-entries written by wa-listener
+    entries: list[dict] = []
+    if isinstance(data, dict):
+        # Dict of entries: {"task-1234": {"nl": ..., "ts": ...}, ...}
+        # OR legacy single entry: {"task_path": "/..."}
+        if "task_path" in data or "nl" in data:
+            entries = [data]
+        else:
+            entries = list(data.values())
+    elif isinstance(data, list):
+        entries = data
+
+    for entry in entries:
+        nl = (entry.get("nl") or "").strip()
+        task_path = (entry.get("task_path") or "").strip()
+
+        if nl:
+            logger.info(f"Queue: NL task: {nl[:80]}")
+            task_path = compile_nl_task(nl)
+            if task_path:
+                pid = run_openqueen(task_path)
+                if pid > 0:
+                    send_whatsapp(f"openqueen: started {Path(task_path).name} (PID={pid}). Will notify when done.")
+            else:
+                logger.error("NL compile failed — no task started")
+        elif task_path:
+            logger.info(f"Queue: task_path={task_path}")
+            pid = run_openqueen(task_path)
+            if pid > 0:
+                send_whatsapp(f"openqueen: started {Path(task_path).name} (PID={pid}). Will notify when done.")
 
 
 # ── Poll session files ────────────────────────────────────────────────────────

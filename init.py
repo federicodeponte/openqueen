@@ -94,6 +94,18 @@ def setup_telegram(env: dict):
     chat_id = ask("Your Telegram chat ID (send /start to your bot, then check getUpdates)", env.get("OQ_TELEGRAM_CHAT_ID", ""))
     if chat_id:
         env["OQ_TELEGRAM_CHAT_ID"] = chat_id
+        # Send a test message to verify chat_id
+        try:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            data = json.dumps({"chat_id": chat_id, "text": "✓ OpenQueen connected! Send me a task."}).encode()
+            with urllib.request.urlopen(
+                urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}),
+                timeout=10,
+            ) as r:
+                json.loads(r.read())
+            info("Test message sent successfully — check your Telegram!")
+        except Exception as e:
+            warn(f"Could not send test message: {e} — check your chat_id")
 
 
 def setup_whatsapp(env: dict):
@@ -106,12 +118,9 @@ def setup_whatsapp(env: dict):
         warn("wa-listener/ not found — was install.sh run?")
         return
 
-    info("Starting wa-listener to pair device (Ctrl+C to skip)...")
-    try:
-        subprocess.run(["node", str(wa_dir / "index.js"), "--pair-only"],
-                       cwd=str(wa_dir), timeout=120)
-    except (subprocess.TimeoutExpired, KeyboardInterrupt):
-        print()
+    info("When you start the service (systemctl start openqueen-wa), a QR code will appear in the logs.")
+    info("Scan it with WhatsApp > Linked Devices > Link a Device.")
+    print()
 
     group_jid = ask("WhatsApp group JID (e.g. 1234567890-1234@g.us)", env.get("OQ_GROUP_JID", ""))
     if group_jid:
