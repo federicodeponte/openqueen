@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # OpenQueen installer — sets up Python env, deps, directories, and systemd services
-# Usage: curl -fsSL https://raw.githubusercontent.com/federicodeponte/openqueen/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/buildingopen/openqueen/main/install.sh | bash
 set -euo pipefail
 
 OQ_HOME="${OPENQUEEN_HOME:-$HOME/openqueen}"
-REPO_URL="https://github.com/federicodeponte/openqueen"
+REPO_URL="https://github.com/buildingopen/openqueen"
 VENV="$OQ_HOME/.venv"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'

@@ -5,7 +5,7 @@ Thanks for your interest in contributing!
 ## Development Setup
 
 ```bash
-git clone https://github.com/federicodeponte/openqueen
+git clone https://github.com/buildingopen/openqueen
 cd openqueen
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt

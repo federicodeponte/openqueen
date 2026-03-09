@@ -30,7 +30,7 @@ WhatsApp / Telegram
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/federicodeponte/openqueen/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/buildingopen/openqueen/main/install.sh | bash
 ```
 
 Then configure:
@@ -164,7 +164,7 @@ docker compose up -d
 ## Development
 
 ```bash
-git clone https://github.com/federicodeponte/openqueen
+git clone https://github.com/buildingopen/openqueen
 cd openqueen
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
