@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenQueen: Your coding agent, controlled by WhatsApp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:     #0a0a0a;
+  --text:   #e8e8e8;
+  --amber:  #e9b84a;
+  --muted:  #555;
+  --border: #1e1e1e;
+  --surface:#111;
+  --green:  #3ddc84;
+  --font:   'JetBrains Mono', monospace;
+}
+
+html { background: var(--bg); scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  opacity: 0.018;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Layout ── */
+.wrap { max-width: 860px; margin: 0 auto; padding: 0 32px; }
+
+/* ── Nav ── */
+nav {
+  border-bottom: 1px solid var(--border);
+  padding: 18px 0;
+  position: sticky;
+  top: 0;
+  background: rgba(10,10,10,0.92);
+  backdrop-filter: blur(8px);
+  z-index: 100;
+}
+.nav-inner { display: flex; align-items: center; justify-content: space-between; }
+.nav-logo {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--amber);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+}
+.nav-logo span { color: rgba(255,255,255,0.5); font-weight: 300; }
+.nav-links { display: flex; gap: 28px; }
+.nav-links a { font-size: 11px; color: var(--muted); text-decoration: none; letter-spacing: 0.06em; transition: color 0.15s; }
+.nav-links a:hover { color: var(--text); }
+
+/* ── Hero ── */
+.hero {
+  padding: 64px 0 48px;
+  border-bottom: 1px solid var(--border);
+}
+.hero-label {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 24px;
+  opacity: 0;
+  animation: fadeup 0.5s ease forwards;
+}
+.hero-h1 {
+  font-size: clamp(32px, 5vw, 52px);
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 20px;
+  opacity: 0;
+  animation: fadeup 0.5s ease 0.1s forwards;
+}
+.hero-h1 em { color: var(--amber); font-style: normal; }
+.hero-sub {
+  font-size: 14px;
+  color: #888;
+  max-width: 540px;
+  line-height: 1.7;
+  margin-bottom: 40px;
+  opacity: 0;
+  animation: fadeup 0.5s ease 0.2s forwards;
+}
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  opacity: 0;
+  animation: fadeup 0.5s ease 0.3s forwards;
+}
+.btn {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 11px 22px;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+}
+.btn-primary {
+  background: var(--amber);
+  color: #0a0a0a;
+}
+.btn-primary:hover { background: #f0c85a; }
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { border-color: #333; color: var(--text); }
+
+@keyframes fadeup {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Demo ── */
+.demo {
+  padding: 48px 0;
+  border-bottom: 1px solid var(--border);
+}
+.section-label {
+  font-size: 9px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 32px;
+}
+.demo-window {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.demo-titlebar {
+  background: #161616;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.demo-dots { display: flex; gap: 6px; }
+.demo-dots span { width: 10px; height: 10px; border-radius: 50%; }
+.demo-dots .r { background: #3a3a3a; }
+.demo-dots .y { background: #3a3a3a; }
+.demo-dots .g { background: #3a3a3a; }
+.demo-titlebar-label { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; }
+
+.demo-body { padding: 28px; display: flex; flex-direction: column; gap: 24px; }
+
+/* WA bubble */
+.wa-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.wa-msg.out { justify-content: flex-end; }
+.wa-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: #1e3a2e;
+  border: 1px solid #2a4a38;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; flex-shrink: 0;
+}
+.wa-bubble {
+  max-width: 72%;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.wa-msg.in  .wa-bubble { background: #1a1a1a; border: 1px solid var(--border); color: var(--text); }
+.wa-msg.out .wa-bubble { background: #1e3a2e; border: 1px solid #2a4a38; color: #e8f5e9; }
+.wa-time { font-size: 9px; color: var(--muted); margin-top: 4px; display: block; text-align: right; }
+
+/* Terminal block */
+.terminal {
+  background: #050505;
+  border: 1px solid #1a1a1a;
+  padding: 16px 20px;
+  font-size: 11px;
+  line-height: 2;
+}
+.t-dim    { color: #3a3a3a; }
+.t-muted  { color: var(--muted); }
+.t-amber  { color: var(--amber); }
+.t-green  { color: var(--green); }
+.t-white  { color: var(--text); }
+.t-line   { display: block; }
+
+/* Typing cursor */
+.cursor {
+  display: inline-block;
+  width: 7px; height: 13px;
+  background: var(--amber);
+  vertical-align: middle;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ── Architecture ── */
+.arch {
+  padding: 56px 0;
+  border-bottom: 1px solid var(--border);
+}
+.arch-flow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-top: 32px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.arch-step {
+  flex: 1;
+  min-width: 100px;
+  padding: 20px 18px;
+  border-right: 1px solid var(--border);
+  position: relative;
+}
+.arch-step:last-child { border-right: none; }
+.arch-step-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 5px;
+}
+.arch-step-name.amber { color: var(--amber); }
+.arch-step-desc { font-size: 11px; color: #777; line-height: 1.5; }
+.arch-arrow {
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+  padding: 20px 0;
+  border-right: 1px solid var(--border);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Install ── */
+.install {
+  padding: 56px 0;
+  border-bottom: 1px solid var(--border);
+}
+.install-steps { display: flex; flex-direction: column; gap: 0; margin-top: 32px; }
+.install-step {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  border: 1px solid var(--border);
+  border-bottom: none;
+}
+.install-step:last-child { border-bottom: 1px solid var(--border); }
+.install-num {
+  border-right: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px 0;
+  font-size: 11px;
+  color: var(--amber);
+  font-weight: 700;
+}
+.install-content { padding: 20px 24px; }
+.install-title { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
+.code-block {
+  background: #050505;
+  border: 1px solid #1a1a1a;
+  padding: 14px 18px;
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--text);
+  line-height: 2;
+}
+.code-block .prompt { color: var(--muted); user-select: none; }
+.code-block .cmd { color: var(--text); }
+.code-block .comment { color: #333; }
+.code-block { word-break: break-word; overflow-wrap: anywhere; }
+
+/* ── Transport ── */
+.transport {
+  padding: 56px 0;
+  border-bottom: 1px solid var(--border);
+}
+.transport-table {
+  margin-top: 32px;
+  border: 1px solid var(--border);
+  width: 100%;
+  border-collapse: collapse;
+}
+.transport-table th {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 400;
+  padding: 12px 20px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  background: #0d0d0d;
+}
+.transport-table td {
+  font-size: 11px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  line-height: 1.6;
+}
+.transport-table tr:last-child td { border-bottom: none; }
+.transport-table tr.primary td:first-child { border-left: 2px solid var(--green); }
+.badge-primary { font-size: 9px; color: var(--green); background: rgba(61,220,132,.08); border: 1px solid rgba(61,220,132,.2); padding: 1px 7px; font-weight: 700; letter-spacing: .1em; vertical-align: middle; margin-left: 8px; }
+.badge-exp { font-size: 9px; color: var(--muted); background: transparent; border: 1px solid var(--border); padding: 1px 7px; font-weight: 700; letter-spacing: .1em; vertical-align: middle; margin-left: 8px; }
+.td-name { font-weight: 700; color: var(--text); }
+.td-muted { color: var(--muted); font-size: 10px; }
+
+/* ── Footer ── */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 32px 0;
+}
+.footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.footer-left { font-size: 10px; color: var(--muted); }
+.footer-left a { color: var(--muted); text-decoration: none; }
+.footer-left a:hover { color: var(--text); }
+.footer-right { font-size: 10px; color: #2a2a2a; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="wrap nav-inner">
+    <a href="#" class="nav-logo">open<span>queen</span></a>
+    <div class="nav-links">
+      <a href="#demo">Demo</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/buildingopen/openqueen">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <p class="hero-label">openqueen · open source</p>
+    <h1 class="hero-h1">Your coding agent,<br>controlled by <em>WhatsApp.</em></h1>
+    <p class="hero-sub">Send a message. Gemini compiles it into a task. Claude executes it. You get notified when done, all while you're away from your desk.</p>
+    <div class="hero-actions">
+      <a href="#install" class="btn btn-primary">Install (30s)</a>
+      <a href="https://github.com/buildingopen/openqueen" class="btn btn-ghost">View on GitHub ↗</a>
+    </div>
+  </div>
+</section>
+
+<!-- DEMO -->
+<section class="demo" id="demo">
+  <div class="wrap">
+    <p class="section-label">How it works</p>
+    <div class="demo-window">
+      <div class="demo-titlebar">
+        <div class="demo-dots"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+        <span class="demo-titlebar-label">openqueen · live demo</span>
+      </div>
+      <div class="demo-body">
+
+        <div class="wa-msg out" style="animation: fadeup 0.4s ease 0.1s both">
+          <div class="wa-bubble">
+            add dark mode to the dashboard
+            <span class="wa-time">09:14 ✓✓</span>
+          </div>
+          <div class="wa-avatar" style="background:#1e2a3a;border-color:#2a3a4a;font-size:11px;color:#aaa">you</div>
+        </div>
+
+        <div class="terminal" style="animation: fadeup 0.4s ease 0.5s both">
+          <span class="t-line"><span class="t-muted">→</span> <span class="t-amber">Gemini</span> <span class="t-muted">compiling task...</span></span>
+          <span class="t-line"><span class="t-muted">  project:</span>   <span class="t-white">~/signaldash</span></span>
+          <span class="t-line"><span class="t-muted">  worker:</span>    <span class="t-white">claude</span></span>
+          <span class="t-line"><span class="t-muted">  done when:</span> <span class="t-white">grep -q "dark" src/theme.ts</span></span>
+          <span class="t-line"><span class="t-muted">→</span> <span class="t-amber">Claude</span> <span class="t-muted">starting... <span class="cursor"></span></span></span>
+        </div>
+
+        <div class="wa-msg in" style="animation: fadeup 0.4s ease 0.9s both">
+          <div class="wa-avatar" style="background:#1a1a2e;border-color:#2a2a3e;font-size:11px;color:#888">oq</div>
+          <div class="wa-bubble">
+            openqueen: started add-dark-mode (PID=2841133). Will notify when done.
+            <span class="wa-time">09:14</span>
+          </div>
+        </div>
+
+        <div class="terminal" style="animation: fadeup 0.4s ease 1.3s both">
+          <span class="t-line"><span class="t-muted">  reading:</span> <span class="t-white">src/theme.ts</span></span>
+          <span class="t-line"><span class="t-muted">  editing:</span> <span class="t-white">src/theme.ts</span> <span class="t-muted">(+47 lines)</span></span>
+          <span class="t-line"><span class="t-muted">  editing:</span> <span class="t-white">src/App.tsx</span> <span class="t-muted">(toggle hook)</span></span>
+          <span class="t-line"><span class="t-muted">  editing:</span> <span class="t-white">src/components/Navbar.tsx</span></span>
+          <span class="t-line"><span class="t-green">✓</span> <span class="t-muted">done when:</span> <span class="t-green">grep -q "dark" src/theme.ts  OK</span></span>
+        </div>
+
+        <div class="wa-msg in" style="animation: fadeup 0.4s ease 1.7s both">
+          <div class="wa-avatar" style="background:#1a1a2e;border-color:#2a2a3e;font-size:11px;color:#888">oq</div>
+          <div class="wa-bubble">
+            [DONE] Add Dark Mode<br><br>
+            · Dark/light theme tokens in theme.ts<br>
+            · Toggle hook in App.tsx<br>
+            · Navbar toggle button<br><br>
+            --- Done When ---<br>
+            pattern: OK<br>
+            a3f91c2 feat: add dark mode toggle<br><br>
+            1 iter · 3 commits
+            <span class="wa-time">09:17 ✓✓</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section class="arch">
+  <div class="wrap">
+    <p class="section-label">Architecture</p>
+    <div class="arch-flow">
+      <div class="arch-step">
+        <div class="arch-step-name amber">You</div>
+        <div class="arch-step-desc">WhatsApp message from your phone</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-step">
+        <div class="arch-step-name">listen.py</div>
+        <div class="arch-step-desc">Watches group, writes to queue</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-step">
+        <div class="arch-step-name">dispatch.py</div>
+        <div class="arch-step-desc">Compiles NL, routes to project</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-step">
+        <div class="arch-step-name">agent.py</div>
+        <div class="arch-step-desc">Gemini orchestrates workers</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-step">
+        <div class="arch-step-name">Claude</div>
+        <div class="arch-step-desc">Edits code, runs tests, commits</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-step">
+        <div class="arch-step-name amber">You</div>
+        <div class="arch-step-desc">Proof-first WA notification</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section class="install" id="install">
+  <div class="wrap">
+    <p class="section-label">Install</p>
+    <div class="install-steps">
+
+      <div class="install-step">
+        <div class="install-num">1</div>
+        <div class="install-content">
+          <p class="install-title">Install</p>
+          <div class="code-block">
+            <span class="prompt">$ </span><span class="cmd">curl -fsSL https://raw.githubusercontent.com/buildingopen/openqueen/main/install.sh | bash</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="install-step">
+        <div class="install-num">2</div>
+        <div class="install-content">
+          <p class="install-title">Configure</p>
+          <div class="code-block">
+            <span class="prompt">$ </span><span class="cmd">openqueen init</span><br>
+            <span class="comment">  → enter Gemini API key</span><br>
+            <span class="comment">  → connect WhatsApp (scan QR)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="install-step">
+        <div class="install-num">3</div>
+        <div class="install-content">
+          <p class="install-title">Start</p>
+          <div class="code-block">
+            <span class="prompt">$ </span><span class="cmd">systemctl enable --now openqueen-listen openqueen-wa</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:16px;">Requires: Python 3.10+, Node.js 18+, git. Tested on Debian/Ubuntu. Runs as a systemd service.</p>
+  </div>
+</section>
+
+<!-- TRANSPORT -->
+<section class="transport">
+  <div class="wrap">
+    <p class="section-label">Transport options</p>
+    <table class="transport-table">
+      <thead>
+        <tr>
+          <th>Transport</th>
+          <th>Setup</th>
+          <th>Risk</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="primary">
+          <td><span class="td-name">WhatsApp</span><span class="badge-primary">PRIMARY</span></td>
+          <td class="td-muted">Scan QR code once</td>
+          <td class="td-muted">ToS risk, personal/private use only</td>
+          <td class="td-muted">Baileys library. Group JID filtering. Default transport.</td>
+        </tr>
+        <tr>
+          <td><span class="td-name">Telegram</span><span class="badge-exp">EXPERIMENTAL</span></td>
+          <td class="td-muted">Create bot via @BotFather</td>
+          <td class="td-muted">None, official Bot API</td>
+          <td class="td-muted">Add-on transport. No Node.js required.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-left">
+      MIT &nbsp;·&nbsp;
+      <a href="https://github.com/buildingopen/openqueen">github.com/buildingopen/openqueen</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/buildingopen">buildingopen</a>
+    </div>
+    <div class="footer-right">OPENQUEEN 2026</div>
+  </div>
+</footer>
+
+<script>
+// ── Scroll reveal ──────────────────────────────────────────
+const revealEls = document.querySelectorAll('.demo, .arch, .install, .transport, footer');
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.style.opacity = '1';
+      e.target.style.transform = 'translateY(0)';
+      io.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.08 });
+revealEls.forEach(el => {
+  el.style.opacity = '0';
+  el.style.transform = 'translateY(18px)';
+  el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+  io.observe(el);
+});
+
+// no additional JS needed — demo uses CSS animation-delay
+</script>
+</body>
+</html>
