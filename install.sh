@@ -30,13 +30,13 @@ TRANSPORT="${OQ_TRANSPORT:-}"
 if [ -z "$TRANSPORT" ]; then
     echo ""
     echo "Choose your transport:"
-    echo "  1) Telegram (recommended — official API, no account ban risk)"
-    echo "  2) WhatsApp (personal use — unofficial Baileys API, ToS risk)"
+    echo "  1) WhatsApp (scan QR code on first run)"
+    echo "  2) Telegram — experimental (create bot via @BotFather)"
     read -rp "Enter 1 or 2 [1]: " choice
     choice="${choice:-1}"
     case "$choice" in
-        2) TRANSPORT="whatsapp" ;;
-        *) TRANSPORT="telegram" ;;
+        2) TRANSPORT="telegram" ;;
+        *) TRANSPORT="whatsapp" ;;
     esac
 fi
 info "Transport: $TRANSPORT"

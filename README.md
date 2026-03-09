@@ -71,8 +71,8 @@ openqueen init
 
 | Transport | Setup | Risk |
 |-----------|-------|------|
-| **Telegram** (recommended) | Create bot via @BotFather | None — official API |
-| **WhatsApp** | Scan QR code | ToS risk — personal use only |
+| **WhatsApp** (primary) | Scan QR code on first run | Personal use — unofficial API |
+| **Telegram** *(experimental)* | Create bot via @BotFather | None — official API |
 
 ## Configuration
 
@@ -83,7 +83,7 @@ OPENQUEEN_HOME=~/openqueen
 GOOGLE_API_KEY=your_gemini_key
 
 # Transport
-OQ_TRANSPORT=telegram          # or: whatsapp
+OQ_TRANSPORT=whatsapp          # or: telegram (experimental)
 OQ_WORKER=claude               # or: codex, gemini
 
 # Telegram

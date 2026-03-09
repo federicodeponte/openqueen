@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-openqueen-listen v4 — watches OpenClaw session files for !task triggers.
+openqueen-listen v4 — watches for task triggers via queue file or session files.
 
 Two detection methods:
-  1. Queue file: /opt/clawdbot/data/openqueen-queue.json (written by clawdbot agent)
+  1. Queue file:  (default: /QUEUE.json)
+     Written by wa-listener on incoming WhatsApp messages.
   2. Session files: detect new agent-replies containing "Queued: <path>"
-     or new user messages starting with "!task " (when groupPolicy=open processes them)
+     or new user messages starting with "!task " (clawdbot installs only)
 
-This daemon runs on the HOST and spawns openqueen when a task is detected.
+Runs as a daemon. Managed by systemd (openqueen-listen.service).
 """
 
 import json
@@ -37,7 +38,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(str(RUNS_DIR / "listen.log")),
     ],
 )
 logger = logging.getLogger("oq-listen")
