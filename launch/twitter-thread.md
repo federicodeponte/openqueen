@@ -57,9 +57,11 @@ Works on any Linux server. MIT license.
 
 **Tweet 5 — CTA**
 ```
-Would love feedback from people who actually use Claude Code or Codex heavily.
+What's the longest task you've run unsupervised with Claude or Codex?
 
-Does this solve a real pain for you?
+Open source. MIT. 30-second install.
+
+→ openqueen.buildingopen.org
 ```
 
 ---

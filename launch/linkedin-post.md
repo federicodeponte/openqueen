@@ -25,8 +25,9 @@ Gemini compiles it into a structured task.
 Claude executes it on your server.
 You get a WhatsApp notification when it's done — with proof.
 
-I used it last week to refactor a module while I was having dinner.
-Got the notification before dessert.
+Last week I used it to fix the citation validator in OpenPaper — a bug that
+had been failing on null DOIs. Sent the task from my phone, went to make coffee.
+Got the Done notification 38 minutes later. 3 tests added, 1 commit, all green.
 
 The architecture is simple:
 → WhatsApp listens for messages
@@ -43,6 +44,8 @@ It's open source. MIT. 30-second install.
 
 Curious: how do you currently handle long-running AI agent tasks?
 Do you babysit them or do you have a better system?
+
+#OpenSource #AIAgents #DeveloperTools #Claude #BuildingOpen
 ```
 
 ---
